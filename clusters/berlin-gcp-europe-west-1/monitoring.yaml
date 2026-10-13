@@ -1,0 +1,127 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: monitoring-namespace
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./shared/namespaces/monitoring/
+  prune: true
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: prometheus-crds
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./monitoring/deployments/prometheus-crds/berlin-gcp-europe-west-1
+  prune: true
+  wait: true
+  dependsOn:
+    - name: shared-sources
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: vm-operator
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./monitoring/deployments/victoria-metrics-operator/berlin-gcp-europe-west-1
+  prune: true
+  wait: true
+  dependsOn:
+    - name: cert-manager
+    - name: prometheus-crds
+# ---
+# apiVersion: kustomize.toolkit.fluxcd.io/v1
+# kind: Kustomization
+# metadata:
+#   name: otel-operator
+#   namespace: flux-system
+# spec:
+#   interval: 1h
+#   retryInterval: 1m
+#   timeout: 10m
+#   sourceRef:
+#     kind: GitRepository
+#     name: flux-system
+#   path: ./monitoring/deployments/opentelemetry-operator/berlin-gcp-europe-west-1
+#   prune: true
+#   wait: true
+#   dependsOn:
+#     - name: cert-manager
+# ---
+# apiVersion: kustomize.toolkit.fluxcd.io/v1
+# kind: Kustomization
+# metadata:
+#   name: vm-components
+#   namespace: flux-system
+# spec:
+#   interval: 1h
+#   retryInterval: 1m
+#   timeout: 10m
+#   sourceRef:
+#     kind: GitRepository
+#     name: flux-system
+#   path: ./monitoring/deployments/victoria-metrics-components/berlin-gcp-europe-west-1
+#   prune: true
+#   wait: true
+#   dependsOn:
+#     - name: vm-operator
+# ---
+# apiVersion: kustomize.toolkit.fluxcd.io/v1
+# kind: Kustomization
+# metadata:
+#   name: grafana
+#   namespace: flux-system
+# spec:
+#   interval: 1h
+#   retryInterval: 1m
+#   timeout: 10m
+#   sourceRef:
+#     kind: GitRepository
+#     name: flux-system
+#   path: ./monitoring/deployments/grafana/berlin-gcp-europe-west-1
+#   prune: true
+#   wait: true
+#   dependsOn:
+#     - name: shared-sources
+#     - name: vm-components
+# ---
+# apiVersion: kustomize.toolkit.fluxcd.io/v1
+# kind: Kustomization
+# metadata:
+#   name: otel-collectors
+#   namespace: flux-system
+# spec:
+#   interval: 1h
+#   retryInterval: 1m
+#   timeout: 10m
+#   sourceRef:
+#     kind: GitRepository
+#     name: flux-system
+#   path: ./monitoring/deployments/opentelemetry-collectors/berlin-gcp-europe-west-1
+#   prune: true
+#   wait: true
+#   dependsOn:
+#     - name: otel-operator
+#     - name: configs
+#     - name: vm-components
