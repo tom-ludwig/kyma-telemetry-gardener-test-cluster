@@ -1,0 +1,54 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: cert-manager
+      version: "v1.21.2"
+      sourceRef:
+        kind: HelmRepository
+        name: cert-manager
+        namespace: flux-system
+      interval: 24h
+  install:
+    createNamespace: true
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    crds:
+      enabled: true
+
+    webhook:
+      timeoutSeconds: 10
+      podLabels:
+        remediation.webhook.shoot.gardener.cloud/exclude: "true"
+      validatingWebhookConfiguration:
+        namespaceSelector:
+          matchExpressions:
+            - key: "cert-manager.io/disable-validation"
+              operator: "NotIn"
+              values:
+                - "true"
+            - key: "kubernetes.io/metadata.name"
+              operator: "NotIn"
+              values:
+                - "kube-system"
+                - "cert-manager"
+
+      mutatingWebhookConfiguration:
+        namespaceSelector:
+          matchExpressions:
+            - key: "kubernetes.io/metadata.name"
+              operator: "NotIn"
+              values:
+                - "kube-system"
+                - "cert-manager"
