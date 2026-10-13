@@ -4,5 +4,5 @@ resources:
   - helmrepo-prometheus-community.yaml
   - helmrepo-opentelemetry.yaml
   - helmrepo-victoriametrics.yaml
-  - ocirepository-cert-manager.yaml
+  - jetstack-repo.yaml
   - ocirepository-grafana.yaml
