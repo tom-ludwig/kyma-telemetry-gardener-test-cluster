@@ -5,4 +5,4 @@ resources:
   - helmrepo-opentelemetry.yaml
   - helmrepo-victoriametrics.yaml
   - jetstack-repo.yaml
-  - ocirepository-grafana.yaml
+  - grafana-community.yaml

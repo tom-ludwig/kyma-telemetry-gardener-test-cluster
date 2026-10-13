@@ -4,6 +4,5 @@ metadata:
   name: grafana-community
   namespace: flux-system
 spec:
-  type: oci
-  interval: 24h
-  url: oci://ghcr.io/grafana-community/helm-charts
+  interval: 1h
+  url: https://grafana-community.github.io/helm-charts
