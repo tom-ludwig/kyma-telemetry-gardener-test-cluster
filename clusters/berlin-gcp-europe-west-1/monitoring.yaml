@@ -48,6 +48,7 @@ spec:
   prune: true
   wait: true
   dependsOn:
+    - name: monitoring-namespace
     - name: cert-manager
     - name: prometheus-crds
 # ---
