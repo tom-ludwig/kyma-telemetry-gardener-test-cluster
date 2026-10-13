@@ -1,25 +1,23 @@
+# apiVersion: kustomize.toolkit.fluxcd.io/v1
+# kind: Kustomization
+# metadata:
+#   name: infra-configs
+#   namespace: flux-system
+# spec:
+#   interval: 1h
+#   retryInterval: 1m
+#   timeout: 5m
+#   sourceRef:
+#     kind: GitRepository
+#     name: flux-system
+#   path: ./infrastructure/configs
+#   prune: true
+#   wait: true
+# ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: infra-configs
-  namespace: flux-system
-spec:
-  interval: 1h
-  retryInterval: 1m
-  timeout: 5m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./infrastructure/configs
-  prune: true
-  wait: true
-  dependsOn:
-    - name: shared-namespaces
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: infra-cert-manager
+  name: cert-manager
   namespace: flux-system
 spec:
   interval: 1h
@@ -32,5 +30,4 @@ spec:
   prune: true
   wait: true
   dependsOn:
-    - name: shared-namespaces
     - name: shared-sources
