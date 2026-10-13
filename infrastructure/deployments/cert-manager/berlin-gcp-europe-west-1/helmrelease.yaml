@@ -42,7 +42,7 @@ spec:
               operator: "NotIn"
               values:
                 - "kube-system"
-                - "cert-manager"
+                # - "cert-manager"
 
       mutatingWebhookConfiguration:
         namespaceSelector:
@@ -51,4 +51,4 @@ spec:
               operator: "NotIn"
               values:
                 - "kube-system"
-                - "cert-manager"
+                # - "cert-manager"
