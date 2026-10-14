@@ -9,6 +9,8 @@ Sub-issues for the epic [kyma-project/telemetry-manager#3900](https://github.com
 
 ## 1. Test Plan
 
+[Assignee: @tom-ludwig]
+
 Define which metrics etc. each load test run collects, so that results from different runs are comparable.
 
 The epic already defines the pipeline counts (1, 3, 5, 10, 20, 50, 100 per signal type) and the report topics. The existing [benchmark setup](https://github.com/kyma-project/telemetry-manager/blob/main/docs/contributor/benchmarks/README.md) already defines cluster size, test duration, backpressure simulation, and the basic result metrics.
@@ -26,6 +28,8 @@ The epic already defines the pipeline counts (1, 3, 5, 10, 20, 50, 100 per signa
 - [ ] Test plan is documented and agreed on by the test team.
 
 ## 2. Load Test Tooling
+
+[Assignee: @louis-kauer]
 
 Check the `.sh` script in its current-state, and decide how to extend it for a parameterized pipeline count.
 
@@ -50,6 +54,8 @@ Current state: [`hack/load-tests/run-load-test.sh`](https://github.com/kyma-proj
 
 ## 3. Grafana Dashboard
 
+[Assignee: @tom-ludwig]
+
 Provide a Grafana dashboard to compare load test runs.
 
 ### Tasks
@@ -67,6 +73,8 @@ Provide a Grafana dashboard to compare load test runs.
 - [ ] Dashboard shows all metrics from the test plan, filterable by run.
 
 ## 4. Infrastructure Setup (for hard-coded Go script)
+
+[Assignees: @louis-kauer in collab w/@tom-ludwig]
 
 Provide the infrastructure that the load test tooling (the hard-coded Go script) runs against.
 
