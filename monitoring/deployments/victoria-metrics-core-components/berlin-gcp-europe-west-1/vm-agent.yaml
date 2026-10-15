@@ -6,6 +6,7 @@ metadata:
 spec:
   replicaCount: 1
   selectAllByDefault: true
+  scrapeInterval: 15s
   # Add cluster name as a label to each metric
   externalLabels:
     cluster: "berlin-gcp-europe-west-1"
