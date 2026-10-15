@@ -4,7 +4,7 @@ metadata:
   name: load-test
 spec:
   retentionPeriod: "1d"
-  retentionMaxDiskSpaceUsageBytes: "16GiB"
+  retentionMaxDiskSpaceUsageBytes: "1600MiB"
   removePvcAfterDelete: true
 
   # OTLP gRPC ingestion on 4317, in addition to OTLP HTTP on 10428
@@ -24,4 +24,4 @@ spec:
       - ReadWriteOnce
     resources:
       requests:
-        storage: 20Gi
+        storage: 2Gi
