@@ -5,5 +5,6 @@ resources:
   - vm-single.yaml
   - vm-agent.yaml
   - vm-node-scrape.yaml
+  - vm-service-scrape.yaml
   - vl-single.yaml
   - vl-agent.yaml
