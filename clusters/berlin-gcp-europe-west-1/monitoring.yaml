@@ -64,7 +64,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./monitoring/deployments/victoria-metrics-components/berlin-gcp-europe-west-1
+  path: ./monitoring/deployments/victoria-metrics-core-components/berlin-gcp-europe-west-1
   prune: true
   wait: true
   dependsOn:
