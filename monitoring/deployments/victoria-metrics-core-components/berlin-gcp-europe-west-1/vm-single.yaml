@@ -2,7 +2,6 @@ apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMSingle
 metadata:
   name: vm-single
-  namespace: monitoring
 spec:
   extraArgs:
     # usePromCompatibleNaming: "true" # only use if opentelemetry option doesn't work
