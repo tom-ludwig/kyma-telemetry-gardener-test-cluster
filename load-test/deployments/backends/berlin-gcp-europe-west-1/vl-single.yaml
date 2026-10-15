@@ -1,0 +1,23 @@
+apiVersion: operator.victoriametrics.com/v1
+kind: VLSingle
+metadata:
+  name: load-test
+spec:
+  retentionPeriod: "1d"
+  retentionMaxDiskSpaceUsageBytes: "8GiB"
+  removePvcAfterDelete: true
+
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+
+  storage:
+    storageClassName: "default"
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 10Gi
