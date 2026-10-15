@@ -42,3 +42,14 @@ Apply the Flux instance manifest:
 ```bash
 kubectl apply -k clusters/berlin-gcp-europe-west-1/flux-system
 ```
+
+## Monitoring
+
+For cluster monitoring the Victoria Stack is used, that means the VictoriaMetrics Operator deploys all components to scrape and store cluster metrics and logs.
+For this load test we explictily don't use a standard Kyma `MetricsPipeline` becuase we want to benchmark the `telemetry-module` it self.
+
+VictoriaMetrics Agent which is a lightweight prometheus like scraper, scrapes metrics and pushes them to `VMSingle` instance used for internal monitoring.
+VictoriaLogs Agent is a lightweight logs scraper, which collects all logs and pushes them to `VLSingle` instance.
+Both `VMSingle` and `VLSingle` are queryable from within Grafana.
+
+For the actual load test the OpenTelemetry Collectors will _NOT_ push their data to those instaces. For them, seperate instances are to be issues.
