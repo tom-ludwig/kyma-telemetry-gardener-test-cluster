@@ -1,0 +1,241 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: grafana
+      version: "13.2.8"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-community
+        namespace: flux-system
+      interval: 24h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    replicas: 1
+
+    service:
+      enabled: true
+
+    deploymentStrategy:
+      type: RollingUpdate
+
+    persistence:
+      enabled: true # Enable sqlite; if size grows too much enable CNPG
+      type: pvc
+      storageClassName: "default"
+      accessModes:
+        - ReadWriteOnce
+      size: 1Gi
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+    grafana.ini:
+      log:
+        mode: console
+      log.console:
+        format: json
+      database:
+        wal: true
+
+      analytics:
+        reporting_enabled: false
+        check_for_updates: false
+      plugins:
+        disable_plugins: elasticsearch
+
+    plugins:
+      - victoriametrics-logs-datasource
+
+    orgs:
+      - name: Evaluation
+        id: 1
+
+    datasources:
+      datasources.yaml:
+        apiVersion: 1
+        datasources:
+          - name: VictoriaMetrics
+            type: prometheus
+            uid: victoriametrics
+            url: http://vmsingle-vm-single.monitoring.svc:8428
+            access: proxy
+            isDefault: true
+            jsonData:
+              prometheusType: Prometheus
+              prometheusVersion: "2.24.0"
+              timeInterval: "15s"
+
+          - name: VictoriaLogs
+            type: victoriametrics-logs-datasource
+            uid: victorialogs
+            url: http://vlsingle-vl-single.monitoring.svc:9428
+            access: proxy
+            isDefault: false
+            jsonData:
+              derivedFields:
+                - name: TraceID
+                  datasourceUid: jaeger-vt
+
+                  matcherRegex: (?:trace_id|traceId)[^0-9a-fA-F]*([0-9a-fA-F]{32})
+                  url: "$${__value.raw}"
+
+    ## Configure grafana dashboard providers
+    ## ref: http://docs.grafana.org/administration/provisioning/#dashboards
+    ##
+    ## `path` must be /var/lib/grafana/dashboards/<provider_name>
+    ##
+    dashboardProviders:
+      dashboardproviders.yaml:
+        apiVersion: 1
+        providers:
+          - name: "envoy"
+            orgId: 1
+            folder: "Envoy"
+            type: file
+            disableDeletion: true
+            editable: false
+            options:
+              path: /var/lib/grafana/dashboards/envoy
+
+          - name: "monitoring"
+            orgId: 1
+            folder: "Monitoring"
+            type: file
+            disableDeletion: true
+            editable: false
+            options:
+              path: /var/lib/grafana/dashboards/monitoring
+
+          - name: "cluster-health"
+            orgId: 1
+            folder: "Cluster Health"
+            type: file
+            disableDeletion: true
+            editable: false
+            options:
+              path: /var/lib/grafana/dashboards/cluster-health
+
+          - name: "databases"
+            orgId: 1
+            folder: "Databases"
+            type: file
+            disableDeletion: true
+            editable: false
+            options:
+              path: /var/lib/grafana/dashboards/databases
+
+          - name: "security"
+            orgId: 1
+            folder: "Security"
+            type: file
+            disableDeletion: true
+            editable: false
+            options:
+              path: /var/lib/grafana/dashboards/security
+
+    # Import community dashboards
+    dashboards:
+      # Folder 1: Envoy
+      envoy:
+        envoy-overview:
+          gnetId: 24459
+          revision: 3
+          datasource: VictoriaMetrics
+        envoy-upstream:
+          gnetId: 24457
+          revision: 4
+          datasource: VictoriaMetrics
+        envoy-downstream:
+          gnetId: 24458
+          revision: 3
+          datasource: VictoriaMetrics
+        envoy-gateway-overview:
+          gnetId: 24460
+          revision: 1
+          datasource: VictoriaMetrics
+        envoy-proxy-monitoring-grpc:
+          gnetId: 23239
+          revision: 1
+          datasource: VictoriaMetrics
+
+      # Folder 2: Monitoring (VictoriaMetrics & Tools)
+      monitoring:
+        victoriametrics-vmagent:
+          gnetId: 12683
+          revision: 38
+          datasource: VictoriaMetrics
+        victoriametrics-operator:
+          gnetId: 17869
+          revision: 9
+          datasource: VictoriaMetrics
+        victoriametrics-single-node:
+          gnetId: 10229
+          revision: 54
+          datasource: VictoriaMetrics
+        victoriametrics-vmalert:
+          gnetId: 14950
+          revision: 21
+          datasource: VictoriaMetrics
+        victoriametrics-vmauth:
+          gnetId: 21394
+          revision: 10
+          datasource: VictoriaMetrics
+        victorialogs-single-node:
+          gnetId: 22084
+          revision: 11
+          datasource: VictoriaMetrics
+        victoriatraces-single-node:
+          gnetId: 24136
+          revision: 3
+          datasource: VictoriaMetrics
+        victorialogs-vlagent:
+          gnetId: 24513
+          revision: 2
+          datasource: VictoriaMetrics
+
+        victorialogs-internal-state:
+          gnetId: 24585
+          revision: 1
+          datasource: VictoriaLogs
+        victoriametrics-alert-statistics:
+          gnetId: 24553
+          revision: 4
+          datasource: VictoriaMetrics
+        opentelemetry-collector:
+          gnetId: 15983
+          revision: 29
+          datasource: VictoriaMetrics
+
+      # Folder 3: Cluster Health
+      cluster-health:
+        node-exporter-full:
+          gnetId: 1860
+          revision: 42
+          datasource: VictoriaMetrics
+
+      databases:
+        cloudnative-postgres:
+          gnetId: 20417
+          revision: 4
+          datasource: VictoriaMetrics
+
+      security:
+        openbao:
+          gnetId: 23725
+          revision: 1
+          datasource: VictoriaMetrics
