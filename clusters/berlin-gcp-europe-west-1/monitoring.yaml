@@ -70,24 +70,23 @@ spec:
   dependsOn:
     - name: vm-operator
 ---
-# apiVersion: kustomize.toolkit.fluxcd.io/v1
-# kind: Kustomization
-# metadata:
-#   name: grafana
-#   namespace: flux-system
-# spec:
-#   interval: 1h
-#   retryInterval: 1m
-#   timeout: 10m
-#   sourceRef:
-#     kind: GitRepository
-#     name: flux-system
-#   path: ./monitoring/deployments/grafana/berlin-gcp-europe-west-1
-#   prune: true
-#   wait: true
-#   dependsOn:
-#     - name: shared-sources
-#     - name: vm-components
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: grafana
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./monitoring/deployments/grafana/berlin-gcp-europe-west-1
+  prune: true
+  wait: true
+  dependsOn:
+    - name: shared-sources
 ---
 # ---
 # apiVersion: kustomize.toolkit.fluxcd.io/v1
