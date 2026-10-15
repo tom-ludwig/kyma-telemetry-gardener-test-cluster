@@ -105,6 +105,8 @@ spec:
   wait: true
   dependsOn:
     - name: cert-manager
+    # The operator only creates ServiceMonitors for collectors if the CRD exists at its start
+    - name: prometheus-crds
 # ---
 # apiVersion: kustomize.toolkit.fluxcd.io/v1
 # kind: Kustomization
