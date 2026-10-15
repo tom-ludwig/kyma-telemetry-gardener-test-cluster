@@ -1,0 +1,26 @@
+# Use dedicated VictoriaMetrics Agent becuase we load test the telemetry-module
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vmagent
+  namespace: monitoring
+spec:
+  replicaCount: 1
+  selectAllByDefault: true
+  # Add cluster name as a label to each metric
+  externalLabels:
+    cluster: "berlin-gcp-europe-west-1"
+
+  remoteWrite:
+    - url: "http://vmsingle-vm-single.monitoring.svc.cluster.local:8428/api/v1/write"
+      inlineUrlRelabelConfig:
+        - source_labels: [__name__]
+          regex: "^flag$"
+          action: drop
+
+  resources:
+    requests:
+      memory: "80Mi"
+      cpu: "50m"
+    limits:
+      memory: "512Mi"

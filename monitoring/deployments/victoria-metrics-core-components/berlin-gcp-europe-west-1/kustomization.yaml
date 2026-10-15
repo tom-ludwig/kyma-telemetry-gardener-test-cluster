@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - vm-single.yaml
+  - vm-agent.yaml
+  - vm-node-scrape.yaml
+  - vl-single.yaml
+  - vl-agent.yaml

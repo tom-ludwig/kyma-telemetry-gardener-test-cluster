@@ -1,0 +1,28 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: vm-single
+  namespace: monitoring
+spec:
+  extraArgs:
+    # usePromCompatibleNaming: "true" # only use if opentelemetry option doesn't work
+    opentelemetry.usePrometheusNaming: "true"
+
+  retentionPeriod: "15d"
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "50m"
+    limits:
+      memory: "1Gi"
+
+  storage:
+    storageClassName: "default"
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 2Gi

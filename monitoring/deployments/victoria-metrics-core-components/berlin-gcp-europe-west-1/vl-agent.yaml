@@ -1,0 +1,43 @@
+apiVersion: operator.victoriametrics.com/v1
+kind: VLAgent
+metadata:
+  name: vlagent
+spec:
+  replicaCount: 1
+
+  logLevel: "INFO"
+
+  k8sCollector:
+    enabled: true
+    streamFields:
+      - "kubernetes.container_name"
+      - "kubernetes.pod_name"
+      - "kubernetes.pod_namespace"
+      - "kubernetes.pod_node_name"
+    timeFields:
+      - "time"
+      - "timestamp"
+      - "ts"
+    msgFields:
+      - "message"
+      - "msg"
+      - "log"
+    includePodLabels: true
+    includePodAnnotations: false
+    includeNodeLabels: false
+    includeNodeAnnotations: false
+    extraFields: '{"cluster": "berlin-gcp-europe-west-1"}'
+
+  remoteWrite:
+    - url: "http://vlsingle-vl-single.monitoring.svc.cluster.local:9428/insert/native"
+
+  remoteWriteSettings:
+    flushInterval: "1s"
+    maxDiskUsagePerURL: "1GB"
+
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "10m"
+    limits:
+      memory: "256Mi"

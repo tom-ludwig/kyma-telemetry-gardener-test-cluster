@@ -1,0 +1,22 @@
+apiVersion: operator.victoriametrics.com/v1
+kind: VLSingle
+metadata:
+  name: vl-single
+  namespace: monitoring
+spec:
+  retentionPeriod: "7d"
+
+  resources:
+    requests:
+      memory: "290Mi"
+      cpu: "10m"
+    limits:
+      memory: "1Gi"
+
+  storage:
+    storageClassName: "default"
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
