@@ -94,6 +94,32 @@ spec:
                   matcherRegex: (?:trace_id|traceId)[^0-9a-fA-F]*([0-9a-fA-F]{32})
                   url: "$${__value.raw}"
 
+          # Load-test backends in load-test-backends namespace
+          - name: VictoriaMetrics LoadTest
+            type: prometheus
+            uid: victoriametrics-load-test
+            url: http://vmsingle-load-test.load-test-backends.svc:8428
+            access: proxy
+            isDefault: false
+            jsonData:
+              prometheusType: Prometheus
+              prometheusVersion: "2.24.0"
+              timeInterval: "15s"
+
+          - name: VictoriaLogs LoadTest
+            type: victoriametrics-logs-datasource
+            uid: victorialogs-load-test
+            url: http://vlsingle-load-test.load-test-backends.svc:9428
+            access: proxy
+            isDefault: false
+
+          - name: VictoriaTraces LoadTest
+            type: jaeger
+            uid: jaeger-vt
+            url: http://vtsingle-load-test.load-test-backends.svc:10428/select/jaeger
+            access: proxy
+            isDefault: false
+
     ## Configure grafana dashboard providers
     ## ref: http://docs.grafana.org/administration/provisioning/#dashboards
     ##
