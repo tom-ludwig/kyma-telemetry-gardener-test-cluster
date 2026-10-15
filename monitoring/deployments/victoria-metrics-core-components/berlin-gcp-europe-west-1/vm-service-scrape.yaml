@@ -1,0 +1,17 @@
+# Gardener already runs node-exporter in kube-system on every shoot node
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: gardener-node-exporter
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      component: node-exporter
+  endpoints:
+    - port: metrics
+      relabelConfigs:
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: nodename
