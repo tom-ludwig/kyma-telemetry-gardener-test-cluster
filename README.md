@@ -18,10 +18,15 @@ This repository manages the deployment and configuration for the performance tes
 │   └── deployments/
 │       └── cert-manager/
 │
+├── load-test/
+│   └── deployments/
+│       └── backends/ # VMSingle, VLSingle, VTSingle that receive the load-test data
+│
 ├── monitoring/
 │   └── deployments/
 │
 └── shared/
+    ├── namespaces/
     └── sources/ # Shared Flux HelmRepository and OCI HelmRepository definitions
 ```
 
@@ -52,4 +57,21 @@ VictoriaMetrics Agent which is a lightweight prometheus like scraper, scrapes me
 VictoriaLogs Agent is a lightweight logs scraper, which collects all logs and pushes them to `VLSingle` instance.
 Both `VMSingle` and `VLSingle` are queryable from within Grafana.
 
-For the actual load test the OpenTelemetry Collectors will _NOT_ push their data to those instaces. For them, seperate instances are to be issues.
+Node metrics come from the node-exporter that Gardener already runs in `kube-system`; a `VMServiceScrape` picks it up.
+
+## Load Test Backends
+
+For the actual load test the OpenTelemetry Collectors will _NOT_ push their data to the monitoring instances. They export to dedicated backends in the `load-test-backends` namespace:
+
+| Signal  | Backend    | Endpoint                                                                                 |
+| ------- | ---------- | ---------------------------------------------------------------------------------------- |
+| Metrics | `VMSingle` | `http://vmsingle-load-test.load-test-backends.svc:8428/opentelemetry/v1/metrics` (OTLP/HTTP) |
+| Logs    | `VLSingle` | `http://vlsingle-load-test.load-test-backends.svc:9428/insert/opentelemetry/v1/logs` (OTLP/HTTP) |
+| Traces  | `VTSingle` | `vtsingle-load-test.load-test-backends.svc:4317` (OTLP/gRPC) or `:10428/insert/opentelemetry/v1/traces` (OTLP/HTTP) |
+
+All three keep data for 1 day. They are queryable in Grafana through the `* LoadTest` datasources.
+
+Namespaces per phase:
+
+- `load-test-backends`: backends, shared by all phases.
+- `otel-load-test`: phase 1, plain OpenTelemetry Collector gateway and load generators.
