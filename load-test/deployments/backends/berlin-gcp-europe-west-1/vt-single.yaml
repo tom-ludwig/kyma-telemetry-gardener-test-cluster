@@ -1,0 +1,27 @@
+apiVersion: operator.victoriametrics.com/v1
+kind: VTSingle
+metadata:
+  name: load-test
+spec:
+  retentionPeriod: "1d"
+  retentionMaxDiskSpaceUsageBytes: "16GiB"
+  removePvcAfterDelete: true
+
+  # OTLP gRPC ingestion on 4317, in addition to OTLP HTTP on 10428
+  grpcSpec:
+    listenPort: 4317
+
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+
+  storage:
+    storageClassName: "default"
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 20Gi
