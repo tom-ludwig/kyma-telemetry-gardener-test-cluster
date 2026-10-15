@@ -1,0 +1,27 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: load-test
+spec:
+  extraArgs:
+    opentelemetry.usePrometheusNaming: "true"
+
+  retentionPeriod: "1d"
+  removePvcAfterDelete: true
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+
+  storage:
+    storageClassName: "default"
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 2Gi
