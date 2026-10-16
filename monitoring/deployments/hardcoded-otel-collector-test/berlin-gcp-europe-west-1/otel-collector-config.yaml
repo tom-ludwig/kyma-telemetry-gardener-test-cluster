@@ -151,7 +151,7 @@ spec:
           queue_size: 5000
 
       otlp_http/traces:
-        traces_endpoint: "http://vtsingle-vt-single-test.hard-coded-otel-collector-test.svc.cluster.local:4318/v1/traces"
+        traces_endpoint: "http://vtsingle-vt-single-test.hard-coded-otel-collector-test.svc.cluster.local:10428/insert/opentelemetry/v1/traces"
         sending_queue:
           enabled: true
           queue_size: 5000
