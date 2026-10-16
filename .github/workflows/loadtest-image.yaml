@@ -1,0 +1,36 @@
+name: loadtest image
+
+on:
+  push:
+    branches: [main]
+    paths: ["load-test/tooling/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: load-test/tooling/go.mod
+      - name: Test
+        working-directory: load-test/tooling
+        run: go vet ./... && go test ./...
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: load-test/tooling
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/loadtest:main
+            ghcr.io/${{ github.repository }}/loadtest:${{ github.sha }}
