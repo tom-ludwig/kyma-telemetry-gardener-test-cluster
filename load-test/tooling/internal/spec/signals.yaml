@@ -13,7 +13,7 @@ signals:
     ingestFilter: type!="internalinsert_index"   # VictoriaTraces also counts one trace-id index row per trace
     freeDiskMetric: vt_free_disk_space_bytes
     totalRate: 12000
-    storedBytes: 40                  # compressed bytes per item, for the preflight disk estimate
+    storedBytes: 75                  # bytes on disk per item, for the preflight disk estimate (measured ~71 per span, index rows included)
   - name: metrics
     item: metric_points
     backend: vmsingle
@@ -25,7 +25,7 @@ signals:
     ingestMetric: vm_rows_inserted_total
     freeDiskMetric: vm_free_disk_space_bytes
     totalRate: 6000
-    storedBytes: 1
+    storedBytes: 5                   # measured ~5 per sample
   - name: logs
     item: log_records
     backend: vlsingle
@@ -38,4 +38,4 @@ signals:
     freeDiskMetric: vl_free_disk_space_bytes
     totalRate: 8000
     bodyBytes: 2000                  # log body size
-    storedBytes: 20                  # telemetrygen body is 2 000 × "x"; replace with bytes on disk ÷ rows after the first dry run
+    storedBytes: 8                   # measured ~6 per record; the 2 000 × "x" body compresses to almost nothing
