@@ -1,0 +1,31 @@
+# Faulty runs only: 70 % of requests get HTTP 503, every response is delayed by 1 s.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fault-backend
+  namespace: load-test-backends
+  labels:
+    app: fault-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fault-backend
+  template:
+    metadata:
+      labels:
+        app: fault-backend
+    spec:
+      nodeSelector:
+        load-test/role: load
+      containers:
+        - name: fault-backend
+          image: europe-docker.pkg.dev/kyma-project/prod/fault-backend@sha256:2aa7a96b64724581a83840e1c88b49f2de0f40165af1f1dcc94241a840529864
+          env:
+            - name: FAULT_RULES
+              value: "503:70"
+            - name: FAULT_DELAYS
+              value: "503:1000,200:1000"
+          ports:
+            - name: http-otlp
+              containerPort: 4318

@@ -1,0 +1,36 @@
+# telemetrygen template. Per run the tool sets name and labels and copies the container
+# once per tenant, adding the signal, --rate, --duration and the tenant attribute.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gen-traces-0
+  namespace: otel-load-test
+  labels:
+    app: gen-traces-0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gen-traces-0
+  template:
+    metadata:
+      labels:
+        app: gen-traces-0
+    spec:
+      nodeSelector:
+        load-test/role: load
+      containers:
+        - name: telemetrygen
+          image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.163.0
+          args:
+            - traces
+            - --otlp-endpoint=otelcol.otel-load-test.svc:4317
+            - --otlp-insecure
+            - --allow-export-failures
+            - --workers=1
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi

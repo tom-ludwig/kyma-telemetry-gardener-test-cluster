@@ -1,0 +1,15 @@
+# One Service per pipeline, so every exporter has its own endpoint.
+# Per run the tool sets name, selector (backend or fault backend) and port.
+apiVersion: v1
+kind: Service
+metadata:
+  name: traces-p-000
+  namespace: load-test-backends
+spec:
+  selector:
+    app.kubernetes.io/name: vtsingle
+    app.kubernetes.io/instance: load-test
+  ports:
+    - name: http
+      port: 10428
+      targetPort: 10428
