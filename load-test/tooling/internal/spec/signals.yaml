@@ -16,7 +16,7 @@ signals:
   - name: metrics
     item: metric_points
     backend: vmsingle
-    port: 8428
+    port: 8429                       # vmsingle container port; 8428 exists only as a Service alias
     path: /opentelemetry/v1/metrics
     endpointKey: metrics_endpoint
     filterKey: metric_conditions
