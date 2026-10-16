@@ -1,0 +1,497 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-multi-tenant-collector
+  namespace: hard-coded-otel-collector-test
+spec:
+  mode: deployment
+  replicas: 1
+  image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s:latest
+
+  observability:
+    metrics:
+      enableMetrics: true
+
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      protocol: TCP
+
+  config:
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    connectors:
+      # Routing connector: splits incoming data by resource attribute "tenant_id"
+      routing:
+        default_pipelines: [logs/tenant1, metrics/tenant1, traces/tenant1]
+        error_mode: ignore
+        table:
+          - statement: route() where resource.attributes["tenant_id"] == "tenant1"
+            pipelines: [logs/tenant1, metrics/tenant1, traces/tenant1]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant2"
+            pipelines: [logs/tenant2, metrics/tenant2, traces/tenant2]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant3"
+            pipelines: [logs/tenant3, metrics/tenant3, traces/tenant3]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant4"
+            pipelines: [logs/tenant4, metrics/tenant4, traces/tenant4]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant5"
+            pipelines: [logs/tenant5, metrics/tenant5, traces/tenant5]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant6"
+            pipelines: [logs/tenant6, metrics/tenant6, traces/tenant6]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant7"
+            pipelines: [logs/tenant7, metrics/tenant7, traces/tenant7]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant8"
+            pipelines: [logs/tenant8, metrics/tenant8, traces/tenant8]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant9"
+            pipelines: [logs/tenant9, metrics/tenant9, traces/tenant9]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant10"
+            pipelines: [logs/tenant10, metrics/tenant10, traces/tenant10]
+
+    processors:
+      # ── Shared ──
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+
+      batch:
+        send_batch_size: 8192
+        send_batch_max_size: 16384
+        timeout: 200ms
+
+      # ── Resource: add cluster name ──
+      resource/cluster:
+        attributes:
+          - key: cluster.name
+            value: "berlin-gcp-europe-west-1"
+            action: upsert
+
+      # ── Resource: add environment label ──
+      resource/env:
+        attributes:
+          - key: deployment.environment
+            value: "load-test"
+            action: upsert
+
+      # ── Resource: add region ──
+      resource/region:
+        attributes:
+          - key: cloud.region
+            value: "europe-west1"
+            action: upsert
+          - key: cloud.provider
+            value: "gcp"
+            action: upsert
+
+      # ── Filter: drop debug-level logs ──
+      filter/drop_debug:
+        error_mode: ignore
+        logs:
+          log_record:
+            - "severity_number < SEVERITY_NUMBER_INFO"
+
+      # ── Filter: drop health-check spans ──
+      filter/drop_healthcheck:
+        error_mode: ignore
+        traces:
+          span:
+            - 'attributes["http.route"] == "/healthz"'
+            - 'attributes["http.route"] == "/readyz"'
+            - 'attributes["http.route"] == "/livez"'
+
+      # ── Filter: keep only error & critical logs ──
+      filter/errors_only:
+        error_mode: ignore
+        logs:
+          log_record:
+            - "severity_number < SEVERITY_NUMBER_ERROR"
+
+      # ── Transform: normalize HTTP attributes to semconv ──
+      transform/normalize_http:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - set(attributes["http.request.method"], attributes["http.method"]) where attributes["http.method"] != nil
+              - delete_key(attributes, "http.method") where attributes["http.method"] != nil
+        trace_statements:
+          - context: span
+            statements:
+              - set(attributes["http.request.method"], attributes["http.method"]) where attributes["http.method"] != nil
+              - delete_key(attributes, "http.method") where attributes["http.method"] != nil
+
+      # ── Transform: enrich with processing metadata ──
+      transform/enrich:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - set(attributes["otel.processing.pipeline"], "multi-tenant-collector")
+              - set(attributes["otel.processed_at"], Now())
+        trace_statements:
+          - context: span
+            statements:
+              - set(attributes["otel.processing.pipeline"], "multi-tenant-collector")
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["otel.processing.pipeline"], "multi-tenant-collector")
+
+      # ── Transform: redact sensitive fields ──
+      transform/redact:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - replace_pattern(attributes["db.statement"], "password=[^&\\s]*", "password=***")
+              - delete_key(attributes, "user.email") where attributes["user.email"] != nil
+        trace_statements:
+          - context: span
+            statements:
+              - replace_pattern(attributes["db.statement"], "password=[^&\\s]*", "password=***")
+
+      # ── Attributes: sanitize noisy keys ──
+      attributes/sanitize:
+        actions:
+          - key: internal.debug_id
+            action: delete
+          - key: internal.trace_flags
+            action: delete
+
+      # ── Attributes: add cost-center tag ──
+      attributes/cost_center:
+        actions:
+          - key: billing.cost_center
+            value: "platform-observability"
+            action: upsert
+
+    exporters:
+      # All tenants export to the same Victoria stack
+      otlphttp/metrics:
+        metrics_endpoint: "http://vmsingle-vm-single.hard-coded-otel-collector-test.svc.cluster.local:8428/opentelemetry/api/v1/push"
+        sending_queue:
+          enabled: true
+          num_consumers: 10
+          queue_size: 5000
+
+      otlphttp/logs:
+        logs_endpoint: "http://vlsingle-vl-single.hard-coded-otel-collector-test.svc.cluster.local:9428/insert/opentelemetry/v1/logs"
+        sending_queue:
+          enabled: true
+          num_consumers: 10
+          queue_size: 5000
+
+      otlphttp/traces:
+        traces_endpoint: "http://vtsingle-vt-single.hard-coded-otel-collector-test.svc.cluster.local:10428/insert/opentelemetry/v1/traces"
+        sending_queue:
+          enabled: true
+          num_consumers: 10
+          queue_size: 5000
+
+    service:
+      telemetry:
+        logs:
+          level: WARN
+          encoding: json
+      extensions:
+        - health_check
+      pipelines:
+        # ── Input pipelines: receive from OTLP, forward to routing connector ──
+        logs/input:
+          receivers: [otlp]
+          processors: [memory_limiter]
+          exporters: [routing]
+        metrics/input:
+          receivers: [otlp]
+          processors: [memory_limiter]
+          exporters: [routing]
+        traces/input:
+          receivers: [otlp]
+          processors: [memory_limiter]
+          exporters: [routing]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 1 – minimal (2 processors)
+        # Pipeline: resource/cluster → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant1:
+          receivers: [routing]
+          processors: [resource/cluster, batch]
+          exporters: [otlphttp/logs]
+        metrics/tenant1:
+          receivers: [routing]
+          processors: [resource/cluster, batch]
+          exporters: [otlphttp/metrics]
+        traces/tenant1:
+          receivers: [routing]
+          processors: [resource/cluster, batch]
+          exporters: [otlphttp/traces]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 2 – short (3 processors)
+        # Pipeline: resource/cluster → resource/env → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant2:
+          receivers: [routing]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlphttp/logs]
+        metrics/tenant2:
+          receivers: [routing]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlphttp/metrics]
+        traces/tenant2:
+          receivers: [routing]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlphttp/traces]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 3 – filter + enrich (3 processors)
+        # Pipeline: filter/drop_debug → resource/cluster → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant3:
+          receivers: [routing]
+          processors: [filter/drop_debug, resource/cluster, batch]
+          exporters: [otlphttp/logs]
+        metrics/tenant3:
+          receivers: [routing]
+          processors: [resource/cluster, batch]
+          exporters: [otlphttp/metrics]
+        traces/tenant3:
+          receivers: [routing]
+          processors: [filter/drop_healthcheck, resource/cluster, batch]
+          exporters: [otlphttp/traces]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 4 – moderate (4 processors)
+        # Pipeline: resource/cluster → resource/env → transform/normalize_http → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant4:
+          receivers: [routing]
+          processors:
+            [resource/cluster, resource/env, transform/normalize_http, batch]
+          exporters: [otlphttp/logs]
+        metrics/tenant4:
+          receivers: [routing]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlphttp/metrics]
+        traces/tenant4:
+          receivers: [routing]
+          processors:
+            [resource/cluster, resource/env, transform/normalize_http, batch]
+          exporters: [otlphttp/traces]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 5 – moderate with filter (4 processors)
+        # Pipeline: filter/drop_debug → resource/cluster → transform/enrich → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant5:
+          receivers: [routing]
+          processors:
+            [filter/drop_debug, resource/cluster, transform/enrich, batch]
+          exporters: [otlphttp/logs]
+        metrics/tenant5:
+          receivers: [routing]
+          processors: [resource/cluster, transform/enrich, batch]
+          exporters: [otlphttp/metrics]
+        traces/tenant5:
+          receivers: [routing]
+          processors:
+            [filter/drop_healthcheck, resource/cluster, transform/enrich, batch]
+          exporters: [otlphttp/traces]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 6 – longer (5 processors)
+        # Pipeline: resource/cluster → resource/region → filter/drop_debug → transform/enrich → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant6:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/region,
+              filter/drop_debug,
+              transform/enrich,
+              batch,
+            ]
+          exporters: [otlphttp/logs]
+        metrics/tenant6:
+          receivers: [routing]
+          processors:
+            [resource/cluster, resource/region, transform/enrich, batch]
+          exporters: [otlphttp/metrics]
+        traces/tenant6:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/region,
+              filter/drop_healthcheck,
+              transform/enrich,
+              batch,
+            ]
+          exporters: [otlphttp/traces]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 7 – longer with normalization (5 processors)
+        # Pipeline: filter/drop_debug → resource/cluster → resource/env → transform/normalize_http → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant7:
+          receivers: [routing]
+          processors:
+            [
+              filter/drop_debug,
+              resource/cluster,
+              resource/env,
+              transform/normalize_http,
+              batch,
+            ]
+          exporters: [otlphttp/logs]
+        metrics/tenant7:
+          receivers: [routing]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlphttp/metrics]
+        traces/tenant7:
+          receivers: [routing]
+          processors:
+            [
+              filter/drop_healthcheck,
+              resource/cluster,
+              resource/env,
+              transform/normalize_http,
+              batch,
+            ]
+          exporters: [otlphttp/traces]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 8 – heavy (6 processors)
+        # Pipeline: resource/cluster → resource/region → filter → transform/enrich → attributes/sanitize → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant8:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/region,
+              filter/drop_debug,
+              transform/enrich,
+              attributes/sanitize,
+              batch,
+            ]
+          exporters: [otlphttp/logs]
+        metrics/tenant8:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/region,
+              transform/enrich,
+              attributes/sanitize,
+              batch,
+            ]
+          exporters: [otlphttp/metrics]
+        traces/tenant8:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/region,
+              filter/drop_healthcheck,
+              transform/enrich,
+              attributes/sanitize,
+              batch,
+            ]
+          exporters: [otlphttp/traces]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 9 – heavy with redaction (7 processors)
+        # Pipeline: resource/cluster → resource/env → filter → transform/normalize_http → transform/redact → attributes/cost_center → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant9:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/env,
+              filter/drop_debug,
+              transform/normalize_http,
+              transform/redact,
+              attributes/cost_center,
+              batch,
+            ]
+          exporters: [otlphttp/logs]
+        metrics/tenant9:
+          receivers: [routing]
+          processors:
+            [resource/cluster, resource/env, attributes/cost_center, batch]
+          exporters: [otlphttp/metrics]
+        traces/tenant9:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/env,
+              filter/drop_healthcheck,
+              transform/normalize_http,
+              transform/redact,
+              attributes/cost_center,
+              batch,
+            ]
+          exporters: [otlphttp/traces]
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Tenant 10 – maximum (8 processors)
+        # Pipeline: resource/cluster → resource/region → resource/env → filter → transform/normalize_http → transform/enrich → attributes/sanitize → batch
+        # ─────────────────────────────────────────────────────────────────────
+        logs/tenant10:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/region,
+              resource/env,
+              filter/errors_only,
+              transform/normalize_http,
+              transform/enrich,
+              attributes/sanitize,
+              batch,
+            ]
+          exporters: [otlphttp/logs]
+        metrics/tenant10:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/region,
+              resource/env,
+              transform/enrich,
+              attributes/sanitize,
+              batch,
+            ]
+          exporters: [otlphttp/metrics]
+        traces/tenant10:
+          receivers: [routing]
+          processors:
+            [
+              resource/cluster,
+              resource/region,
+              resource/env,
+              filter/drop_healthcheck,
+              transform/normalize_http,
+              transform/enrich,
+              attributes/sanitize,
+              batch,
+            ]
+          exporters: [otlphttp/traces]
