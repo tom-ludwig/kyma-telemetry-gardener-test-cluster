@@ -217,7 +217,11 @@ func (p Prom) QuerySignal(ctx context.Context, s spec.RunSpec, sig spec.Signal, 
 	if r.PerPipelineMinMax[1], err = p.Required(ctx, "max("+perPipeline+")", at); err != nil {
 		return r, err
 	}
-	if r.BackendIngestPerS, err = p.Required(ctx, fmt.Sprintf(`sum(rate(%s{%s}[%s]))`, sig.IngestMetric, sel.Backend, W), at); err != nil {
+	ingest := sel.Backend
+	if sig.IngestFilter != "" {
+		ingest += "," + sig.IngestFilter
+	}
+	if r.BackendIngestPerS, err = p.Required(ctx, fmt.Sprintf(`sum(rate(%s{%s}[%s]))`, sig.IngestMetric, ingest, W), at); err != nil {
 		return r, err
 	}
 	if r.BackendCPUMax, err = p.Required(ctx, fmt.Sprintf(`max_over_time(sum(rate(container_cpu_usage_seconds_total{%s,container!=""}[1m]))[%s:%s])`, sel.Backend, W, step), at); err != nil {

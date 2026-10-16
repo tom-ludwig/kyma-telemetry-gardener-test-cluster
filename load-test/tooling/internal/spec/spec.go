@@ -36,6 +36,7 @@ type Signal struct {
 	FilterKey      string `json:"filterKey"`
 	Header         string `json:"header"`
 	IngestMetric   string `json:"ingestMetric"`
+	IngestFilter   string `json:"ingestFilter"`
 	FreeDiskMetric string `json:"freeDiskMetric"`
 	TotalRate      int    `json:"totalRate"`
 	BodyBytes      int    `json:"bodyBytes"`
