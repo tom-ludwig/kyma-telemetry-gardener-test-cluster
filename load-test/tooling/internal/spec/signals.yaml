@@ -1,0 +1,40 @@
+# Per signal: where the collector exports to, how items are filtered and measured,
+# and the load A total rate. Unknown keys fail at start.
+signals:
+  - name: traces
+    item: spans                      # otelcol_*_<item>_total
+    backend: vtsingle                # VM operator app name, Service vtsingle-load-test
+    port: 10428
+    path: /insert/opentelemetry/v1/traces
+    endpointKey: traces_endpoint     # otlp_http exporter field
+    filterKey: trace_conditions      # filter processor field
+    header: VT-Extra-Fields          # per-pipeline attribution
+    ingestMetric: vt_rows_ingested_total
+    freeDiskMetric: vt_free_disk_space_bytes
+    totalRate: 12000
+    storedBytes: 40                  # compressed bytes per item, for the preflight disk estimate
+  - name: metrics
+    item: metric_points
+    backend: vmsingle
+    port: 8428
+    path: /opentelemetry/v1/metrics
+    endpointKey: metrics_endpoint
+    filterKey: metric_conditions
+    header: ""                       # VictoriaMetrics: ?extra_label=pipeline=<id> instead
+    ingestMetric: vm_rows_inserted_total
+    freeDiskMetric: vm_free_disk_space_bytes
+    totalRate: 6000
+    storedBytes: 1
+  - name: logs
+    item: log_records
+    backend: vlsingle
+    port: 9428
+    path: /insert/opentelemetry/v1/logs
+    endpointKey: logs_endpoint
+    filterKey: log_conditions
+    header: VL-Extra-Fields
+    ingestMetric: vl_rows_ingested_total
+    freeDiskMetric: vl_free_disk_space_bytes
+    totalRate: 8000
+    bodyBytes: 2000                  # log body size
+    storedBytes: 20                  # telemetrygen body is 2 000 × "x"; replace with bytes on disk ÷ rows after the first dry run
