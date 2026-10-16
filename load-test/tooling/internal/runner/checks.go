@@ -25,9 +25,9 @@ const (
 )
 
 type nodes struct {
-	collector  string
-	load       []string
-	nodeACores float64
+	collector string
+	load      []string
+	env       result.Env
 }
 
 // preflight stops a run before anything is created when the cluster cannot carry it.
@@ -56,7 +56,7 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 	for _, node := range list.Items {
 		if node.Labels[manifests.RoleLabel] == "collector" {
 			n.collector = node.Name
-			n.nodeACores = node.Status.Allocatable.Cpu().AsApproximateFloat64()
+			n.env.CollectorNode = nodeInfo(node)
 			warnMemory(s, node)
 			continue
 		}
@@ -64,6 +64,7 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 			continue
 		}
 		n.load = append(n.load, node.Name)
+		n.env.LoadNodes = append(n.env.LoadNodes, nodeInfo(node))
 		add(loadAlloc, node.Status.Allocatable)
 		used, err := r.requestsOn(ctx, node.Name)
 		if err != nil {
@@ -90,6 +91,15 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 		}
 	}
 	return n, nil
+}
+
+func nodeInfo(node corev1.Node) result.NodeInfo {
+	return result.NodeInfo{
+		Name:        node.Name,
+		MachineType: node.Labels[corev1.LabelInstanceTypeStable],
+		CPU:         node.Status.Allocatable.Cpu().AsApproximateFloat64(),
+		MemoryGiB:   node.Status.Allocatable.Memory().AsApproximateFloat64() / (1 << 30),
+	}
 }
 
 func warnMemory(s spec.RunSpec, node corev1.Node) {

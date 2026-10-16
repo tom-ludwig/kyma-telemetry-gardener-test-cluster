@@ -23,9 +23,13 @@ const (
 	hold         = 5 * time.Minute
 )
 
+// ToolCommit is the git commit the tool was built from, set by the image build (-ldflags -X).
+var ToolCommit = "dev"
+
 type Record struct {
 	Run           RunInfo                 `json:"run"`
 	Setup         Setup                   `json:"setup"`
+	Env           Env                     `json:"env"`
 	Config        ConfigRecord            `json:"config"`
 	Signals       map[string]SignalResult `json:"signals"`
 	Collector     CollectorResult         `json:"collector"`
@@ -36,6 +40,8 @@ type Record struct {
 
 type RunInfo struct {
 	ID             string    `json:"id"`
+	Args           []string  `json:"args"` // flags exactly as passed to the tool
+	ToolCommit     string    `json:"tool_commit"`
 	Date           time.Time `json:"date"`
 	CollectorImage string    `json:"collector_image"`
 	Start          time.Time `json:"start"`        // generators started
@@ -54,6 +60,39 @@ type Setup struct {
 	CPULimit             *string        `json:"cpu_limit"` // none, as in TM
 	MemLimitMiB          int            `json:"mem_limit_mib"`
 	QueueSizePerExporter int            `json:"queue_size_per_exporter"`
+	PhasesS              Phases         `json:"phases_s"`
+	Generator            GeneratorSetup `json:"generator"`
+	Fault                *FaultSetup    `json:"fault,omitempty"` // faulty runs only
+}
+
+type Phases struct {
+	Warmup   float64 `json:"warmup"`
+	Steady   float64 `json:"steady"`
+	Cooldown float64 `json:"cooldown"`
+}
+
+type GeneratorSetup struct {
+	Image            string         `json:"image"`
+	WorkersPerTenant map[string]int `json:"workers_per_tenant"` // telemetrygen workers per tenant and signal
+	LogBodyBytes     int            `json:"log_body_bytes"`
+}
+
+type FaultSetup struct {
+	Image  string `json:"image"`
+	Rules  string `json:"rules"`  // FAULT_RULES
+	Delays string `json:"delays"` // FAULT_DELAYS
+}
+
+type Env struct {
+	CollectorNode NodeInfo   `json:"collector_node"`
+	LoadNodes     []NodeInfo `json:"load_nodes"`
+}
+
+type NodeInfo struct {
+	Name        string  `json:"name"`
+	MachineType string  `json:"machine_type"`
+	CPU         float64 `json:"cpu"` // allocatable cores
+	MemoryGiB   float64 `json:"memory_gib"`
 }
 
 type ConfigRecord struct {

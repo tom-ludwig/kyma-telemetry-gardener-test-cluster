@@ -61,7 +61,7 @@ Each run prints one JSON line on stdout: `{"msg":"loadtest result","result":{…
 
 Run IDs: `<shape>-<load>-t<tenants>-<health>-r<rep>`, for example `f1-A-t050-healthy-r1` or `r1-B1000-t005-faulty-r1`. `result.run.steady_start` and `steady_end` are the measured window; collector series carry the label `loadtest_kyma_project_io_run=<run-id>`.
 
-The record holds setup, config size, per-signal throughput and failures, collector memory and CPU, backend checks, and the limits hit (`H1`–`H4` hard, `S1`–`S5` soft).
+The record holds the run's inputs (`run.args`, `run.tool_commit`, phases, generator and fault backend settings, node sizes in `env`), config size, per-signal throughput and failures, collector memory and CPU, backend checks, and the limits hit (`H1`–`H4` hard, `S1`–`S5` soft).
 
 ## What stops a run
 

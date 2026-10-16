@@ -92,6 +92,19 @@ func GeneratorRequests() (cpu, memory resource.Quantity, err error) {
 	return req[corev1.ResourceCPU], req[corev1.ResourceMemory], nil
 }
 
+// Workers is the telemetrygen worker count for one tenant's rate: one worker delivers
+// only ~1600 items/s, and --rate is per worker.
+func Workers(rate int) int { return max(1, (rate+itemsPerWorker-1)/itemsPerWorker) }
+
+// GeneratorImage returns the telemetrygen image, for the result record.
+func GeneratorImage() (string, error) {
+	var tmpl appsv1.Deployment
+	if err := readTemplate("generator.yaml", &tmpl); err != nil {
+		return "", err
+	}
+	return tmpl.Spec.Template.Spec.Containers[0].Image, nil
+}
+
 // CollectorImage returns the image of the collector under test, for the result record.
 func CollectorImage() string {
 	objs, err := CollectorObjects(spec.RunSpec{Tenants: 1}, nil)
@@ -218,9 +231,8 @@ func generatorContainer(base corev1.Container, s spec.RunSpec, sig spec.Signal, 
 	c := *base.DeepCopy()
 	c.Name = fmt.Sprintf("%s-%s", sig.Name, spec.PipelineID(tenant))
 	c.Args = append([]string{sig.Name}, base.Args[1:]...)
-	// one telemetrygen worker delivers only ~1600 items/s, and --rate is per worker
 	rate := s.TenantRate(sig)
-	workers := max(1, (rate+itemsPerWorker-1)/itemsPerWorker)
+	workers := Workers(rate)
 	c.Args = append(c.Args,
 		fmt.Sprintf("--workers=%d", workers),
 		fmt.Sprintf("--rate=%g", float64(rate)/float64(workers)),

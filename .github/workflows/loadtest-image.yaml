@@ -30,6 +30,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: load-test/tooling
+          build-args: GIT_SHA=${{ github.sha }}
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/loadtest:main

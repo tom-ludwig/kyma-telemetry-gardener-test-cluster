@@ -55,7 +55,7 @@ func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldo
 	if err != nil {
 		return err
 	}
-	r, err := runner.New(k, result.Prom{API: promv1.NewAPI(promClient)}, warmup, steady, cooldown)
+	r, err := runner.New(k, result.Prom{API: promv1.NewAPI(promClient)}, warmup, steady, cooldown, os.Args[1:])
 	if err != nil {
 		return err
 	}

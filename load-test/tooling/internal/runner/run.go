@@ -23,18 +23,19 @@ type Runner struct {
 	k                        client.Client
 	p                        result.Prom
 	warmup, steady, cooldown time.Duration
+	args                     []string // flags as passed, for the result record
 	genCPU, genMemory        resource.Quantity
 	done                     map[string]*result.Record // records of this process by run ID
 	runFn                    func(context.Context, spec.RunSpec) (*result.Record, error)
 }
 
-func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration) (*Runner, error) {
+func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration, args []string) (*Runner, error) {
 	cpu, memory, err := manifests.GeneratorRequests()
 	if err != nil {
 		return nil, err
 	}
 	r := &Runner{
-		k: k, p: p, warmup: warmup, steady: steady, cooldown: cooldown,
+		k: k, p: p, warmup: warmup, steady: steady, cooldown: cooldown, args: args,
 		genCPU: cpu, genMemory: memory, done: map[string]*result.Record{},
 	}
 	r.runFn = r.Run
@@ -76,7 +77,10 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 	w := result.Window{Start: start, SteadyStart: start.Add(r.warmup), SteadyEnd: start.Add(r.warmup + r.steady)}
 	log.Printf("%s: load on, measuring %s – %s", s.ID(), w.SteadyStart.Format(time.TimeOnly), w.SteadyEnd.Format(time.TimeOnly))
 
-	rec := newRecord(s, stats, startup, w)
+	rec, err := r.newRecord(s, stats, startup, w, n)
+	if err != nil {
+		return nil, err
+	}
 	watch := &collectorWatch{start: start}
 	watchCtx, stopWatch := context.WithCancel(ctx)
 	defer stopWatch()
@@ -99,13 +103,21 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 	return rec, result.PrintRecord(rec)
 }
 
-func newRecord(s spec.RunSpec, stats manifests.ConfigStats, startup float64, w result.Window) *result.Record {
+// newRecord holds the run's inputs; the measured values are filled in later.
+func (r *Runner) newRecord(s spec.RunSpec, stats manifests.ConfigStats, startup float64, w result.Window, n nodes) (*result.Record, error) {
+	genImage, err := manifests.GeneratorImage()
+	if err != nil {
+		return nil, err
+	}
 	rec := &result.Record{
-		Run: result.RunInfo{ID: s.ID(), Date: time.Now().UTC(), CollectorImage: manifests.CollectorImage(),
-			Start: w.Start, SteadyStart: w.SteadyStart, SteadyEnd: w.SteadyEnd},
+		Run: result.RunInfo{ID: s.ID(), Args: r.args, ToolCommit: result.ToolCommit, Date: time.Now().UTC(),
+			CollectorImage: manifests.CollectorImage(), Start: w.Start, SteadyStart: w.SteadyStart, SteadyEnd: w.SteadyEnd},
 		Setup: result.Setup{Shape: s.Shape, Load: s.Load, Tenants: s.Tenants, Health: s.Health,
 			RatePerTenant: map[string]int{}, OfferedPerS: map[string]int{},
-			MemLimitMiB: s.MemoryLimitMi(), QueueSizePerExporter: s.QueueSize()},
+			MemLimitMiB: s.MemoryLimitMi(), QueueSizePerExporter: s.QueueSize(),
+			PhasesS:   result.Phases{Warmup: r.warmup.Seconds(), Steady: r.steady.Seconds(), Cooldown: r.cooldown.Seconds()},
+			Generator: result.GeneratorSetup{Image: genImage, WorkersPerTenant: map[string]int{}}},
+		Env:     n.env,
 		Config:  result.ConfigRecord{ConfigStats: stats, StartupS: startup},
 		Signals: map[string]result.SignalResult{},
 		Limit:   result.Limits{All: []result.Hit{}},
@@ -114,8 +126,36 @@ func newRecord(s spec.RunSpec, stats manifests.ConfigStats, startup float64, w r
 	for _, sig := range spec.Signals {
 		rec.Setup.RatePerTenant[sig.Name] = s.TenantRate(sig)
 		rec.Setup.OfferedPerS[sig.Name] = s.OfferedRate(sig)
+		rec.Setup.Generator.WorkersPerTenant[sig.Name] = manifests.Workers(s.TenantRate(sig))
+		rec.Setup.Generator.LogBodyBytes = max(rec.Setup.Generator.LogBodyBytes, sig.BodyBytes)
 	}
-	return rec
+	if s.Health != spec.Faulty {
+		return rec, nil
+	}
+	fault, err := faultSetup(s)
+	if err != nil {
+		return nil, err
+	}
+	rec.Setup.Fault = &fault
+	return rec, nil
+}
+
+func faultSetup(s spec.RunSpec) (result.FaultSetup, error) {
+	d, err := manifests.FaultBackend(s)
+	if err != nil {
+		return result.FaultSetup{}, err
+	}
+	c := d.Spec.Template.Spec.Containers[0]
+	f := result.FaultSetup{Image: c.Image}
+	for _, e := range c.Env {
+		switch e.Name {
+		case "FAULT_RULES":
+			f.Rules = e.Value
+		case "FAULT_DELAYS":
+			f.Delays = e.Value
+		}
+	}
+	return f, nil
 }
 
 func (r *Runner) invalid(rec *result.Record, reason string) error {
@@ -158,7 +198,7 @@ func (r *Runner) fill(ctx context.Context, s spec.RunSpec, w result.Window, n no
 			rec.InvalidReason = fmt.Sprintf("%s backend stored %.0f %% of exported", sig.Name, 100*res.BackendIngestRatio)
 		}
 	}
-	if err := r.p.EvalLimits(ctx, s, w, rec, n.nodeACores); err != nil {
+	if err := r.p.EvalLimits(ctx, s, w, rec, n.env.CollectorNode.CPU); err != nil {
 		return err
 	}
 	healthy := s
