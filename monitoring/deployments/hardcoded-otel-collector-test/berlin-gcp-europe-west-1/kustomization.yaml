@@ -6,5 +6,4 @@ resources:
   - ./vl-single.yaml
   - ./vm-single.yaml
   - ./vt-single.yaml
-  - ./otel-collector.yaml.yaml
   - ./otel-collector-config.yaml
