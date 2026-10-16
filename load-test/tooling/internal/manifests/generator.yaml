@@ -27,7 +27,6 @@ spec:
             - --otlp-endpoint=otelcol.otel-load-test.svc:4317
             - --otlp-insecure
             - --allow-export-failures
-            - --workers=1
           resources:
             requests:
               cpu: 20m

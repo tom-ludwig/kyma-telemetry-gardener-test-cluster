@@ -32,6 +32,8 @@ const (
 	RunLabel      = "loadtest.kyma-project.io/run"
 	RoleLabel     = "load-test/role"
 	tenantsPerPod = 10
+	// items/s per telemetrygen worker, well below its measured ~1600/s ceiling
+	itemsPerWorker = 500
 )
 
 func RunLabels(s spec.RunSpec) map[string]string { return map[string]string{RunLabel: s.ID()} }
@@ -216,8 +218,12 @@ func generatorContainer(base corev1.Container, s spec.RunSpec, sig spec.Signal, 
 	c := *base.DeepCopy()
 	c.Name = fmt.Sprintf("%s-%s", sig.Name, spec.PipelineID(tenant))
 	c.Args = append([]string{sig.Name}, base.Args[1:]...)
+	// one telemetrygen worker delivers only ~1600 items/s, and --rate is per worker
+	rate := s.TenantRate(sig)
+	workers := max(1, (rate+itemsPerWorker-1)/itemsPerWorker)
 	c.Args = append(c.Args,
-		fmt.Sprintf("--rate=%d", s.TenantRate(sig)),
+		fmt.Sprintf("--workers=%d", workers),
+		fmt.Sprintf("--rate=%g", float64(rate)/float64(workers)),
 		"--duration="+duration.String(),
 		fmt.Sprintf(`--otlp-attributes=tenant="%s"`, spec.TenantID(tenant)),
 	)

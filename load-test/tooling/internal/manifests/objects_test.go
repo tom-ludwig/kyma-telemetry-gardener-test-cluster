@@ -1,8 +1,11 @@
 package manifests
 
 import (
+	"slices"
 	"testing"
+	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -67,5 +70,23 @@ func TestFaultyPipelineService(t *testing.T) {
 	}
 	if faulty != 3 {
 		t.Errorf("services on the fault backend: %d, want 3 (p-000 of each signal)", faulty)
+	}
+}
+
+func TestGeneratorWorkers(t *testing.T) {
+	for rate, want := range map[int][2]string{
+		300:  {"--workers=1", "--rate=300"},
+		1000: {"--workers=2", "--rate=500"},
+		1001: {"--workers=3", "--rate=333.6666666666667"},
+	} {
+		s := spec.RunSpec{Shape: spec.ShapeF1, Tenants: 1, Load: spec.LoadB, Rate: rate, Health: spec.Healthy, Rep: 1}
+		objs, err := Generators(s, time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args := objs[0].(*appsv1.Deployment).Spec.Template.Spec.Containers[0].Args
+		if !slices.Contains(args, want[0]) || !slices.Contains(args, want[1]) {
+			t.Errorf("rate %d: args %v, want %v", rate, args, want)
+		}
 	}
 }
