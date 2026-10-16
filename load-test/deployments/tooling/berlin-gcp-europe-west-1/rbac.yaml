@@ -1,0 +1,84 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: loadtest
+rules:
+  - apiGroups: [""]
+    resources: [nodes, pods, persistentvolumeclaims]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: loadtest
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: loadtest
+subjects:
+  - kind: ServiceAccount
+    name: loadtest
+    namespace: otel-load-test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: loadtest
+  namespace: otel-load-test
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, create, delete, deletecollection]
+  - apiGroups: [""]
+    resources: [services, configmaps, serviceaccounts]
+    verbs: [get, list, create, delete, deletecollection]
+  - apiGroups: [operator.victoriametrics.com]
+    resources: [vmpodscrapes]
+    verbs: [get, list, create, delete, deletecollection]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: loadtest
+  namespace: otel-load-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: loadtest
+subjects:
+  - kind: ServiceAccount
+    name: loadtest
+    namespace: otel-load-test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: loadtest
+  namespace: load-test-backends
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, create, delete, deletecollection]
+  - apiGroups: [""]
+    resources: [services, configmaps, serviceaccounts]
+    verbs: [get, list, create, delete, deletecollection]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+  - apiGroups: [operator.victoriametrics.com]
+    resources: [vmpodscrapes]
+    verbs: [list, deletecollection]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: loadtest
+  namespace: load-test-backends
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: loadtest
+subjects:
+  - kind: ServiceAccount
+    name: loadtest
+    namespace: otel-load-test
