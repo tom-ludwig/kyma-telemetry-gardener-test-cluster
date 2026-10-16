@@ -1,0 +1,318 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-multi-tenant-collector
+  namespace: hard-coded-otel-collector-test
+spec:
+  mode: deployment
+  replicas: 1
+  image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s:latest
+
+  observability:
+    metrics:
+      enableMetrics: true
+
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      protocol: TCP
+
+  config:
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    connectors:
+      routing/logs:
+        default_pipelines: [logs/tenant1]
+        error_mode: ignore
+        table:
+          - statement: route() where resource.attributes["tenant_id"] == "tenant1"
+            pipelines: [logs/tenant1]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant2"
+            pipelines: [logs/tenant2]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant3"
+            pipelines: [logs/tenant3]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant4"
+            pipelines: [logs/tenant4]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant5"
+            pipelines: [logs/tenant5]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant6"
+            pipelines: [logs/tenant6]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant7"
+            pipelines: [logs/tenant7]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant8"
+            pipelines: [logs/tenant8]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant9"
+            pipelines: [logs/tenant9]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant10"
+            pipelines: [logs/tenant10]
+
+      routing/metrics:
+        default_pipelines: [metrics/tenant1]
+        error_mode: ignore
+        table:
+          - statement: route() where resource.attributes["tenant_id"] == "tenant1"
+            pipelines: [metrics/tenant1]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant2"
+            pipelines: [metrics/tenant2]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant3"
+            pipelines: [metrics/tenant3]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant4"
+            pipelines: [metrics/tenant4]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant5"
+            pipelines: [metrics/tenant5]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant6"
+            pipelines: [metrics/tenant6]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant7"
+            pipelines: [metrics/tenant7]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant8"
+            pipelines: [metrics/tenant8]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant9"
+            pipelines: [metrics/tenant9]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant10"
+            pipelines: [metrics/tenant10]
+
+      routing/traces:
+        default_pipelines: [traces/tenant1]
+        error_mode: ignore
+        table:
+          - statement: route() where resource.attributes["tenant_id"] == "tenant1"
+            pipelines: [traces/tenant1]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant2"
+            pipelines: [traces/tenant2]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant3"
+            pipelines: [traces/tenant3]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant4"
+            pipelines: [traces/tenant4]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant5"
+            pipelines: [traces/tenant5]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant6"
+            pipelines: [traces/tenant6]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant7"
+            pipelines: [traces/tenant7]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant8"
+            pipelines: [traces/tenant8]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant9"
+            pipelines: [traces/tenant9]
+          - statement: route() where resource.attributes["tenant_id"] == "tenant10"
+            pipelines: [traces/tenant10]
+
+    processors:
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+
+      batch:
+        send_batch_size: 8192
+        timeout: 200ms
+
+      resource/cluster:
+        attributes:
+          - key: cluster.name
+            value: "berlin-gcp-europe-west-1"
+            action: upsert
+
+      resource/env:
+        attributes:
+          - key: deployment.environment
+            value: "load-test"
+            action: upsert
+
+      filter/drop_debug:
+        error_mode: ignore
+        logs:
+          log_record:
+            - "severity_number < SEVERITY_NUMBER_INFO"
+
+    exporters:
+      otlp_http/metrics:
+        metrics_endpoint: "http://vmsingle-vm-single-test.hard-coded-otel-collector-test.svc.cluster.local:8428/opentelemetry/api/v1/push"
+        sending_queue:
+          enabled: true
+          queue_size: 5000
+
+      otlp_http/logs:
+        logs_endpoint: "http://vlsingle-vl-single-test.hard-coded-otel-collector-test.svc.cluster.local:9428/insert/opentelemetry/v1/logs"
+        sending_queue:
+          enabled: true
+          queue_size: 5000
+
+      otlp_http/traces:
+        traces_endpoint: "http://vtsingle-vt-single-test.hard-coded-otel-collector-test.svc.cluster.local:10428/insert/opentelemetry/v1/traces"
+        sending_queue:
+          enabled: true
+          queue_size: 5000
+
+    service:
+      telemetry:
+        logs:
+          level: WARN
+          encoding: json
+      extensions: [health_check]
+      pipelines:
+        # ── Input pipelines ──
+        logs/input:
+          receivers: [otlp]
+          processors: [memory_limiter]
+          exporters: [routing/logs]
+        metrics/input:
+          receivers: [otlp]
+          processors: [memory_limiter]
+          exporters: [routing/metrics]
+        traces/input:
+          receivers: [otlp]
+          processors: [memory_limiter]
+          exporters: [routing/traces]
+
+        # ── Tenant 1 – minimal: batch only ──
+        logs/tenant1:
+          receivers: [routing/logs]
+          processors: [batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant1:
+          receivers: [routing/metrics]
+          processors: [batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant1:
+          receivers: [routing/traces]
+          processors: [batch]
+          exporters: [otlp_http/traces]
+
+        # ── Tenant 2 – cluster tag ──
+        logs/tenant2:
+          receivers: [routing/logs]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant2:
+          receivers: [routing/metrics]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant2:
+          receivers: [routing/traces]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/traces]
+
+        # ── Tenant 3 – cluster + env ──
+        logs/tenant3:
+          receivers: [routing/logs]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant3:
+          receivers: [routing/metrics]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant3:
+          receivers: [routing/traces]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/traces]
+
+        # ── Tenant 4 – filter + cluster ──
+        logs/tenant4:
+          receivers: [routing/logs]
+          processors: [filter/drop_debug, resource/cluster, batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant4:
+          receivers: [routing/metrics]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant4:
+          receivers: [routing/traces]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/traces]
+
+        # ── Tenant 5 – filter + cluster + env ──
+        logs/tenant5:
+          receivers: [routing/logs]
+          processors: [filter/drop_debug, resource/cluster, resource/env, batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant5:
+          receivers: [routing/metrics]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant5:
+          receivers: [routing/traces]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/traces]
+
+        # ── Tenant 6 – cluster ──
+        logs/tenant6:
+          receivers: [routing/logs]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant6:
+          receivers: [routing/metrics]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant6:
+          receivers: [routing/traces]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/traces]
+
+        # ── Tenant 7 – cluster + env ──
+        logs/tenant7:
+          receivers: [routing/logs]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant7:
+          receivers: [routing/metrics]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant7:
+          receivers: [routing/traces]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/traces]
+
+        # ── Tenant 8 – filter + cluster ──
+        logs/tenant8:
+          receivers: [routing/logs]
+          processors: [filter/drop_debug, resource/cluster, batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant8:
+          receivers: [routing/metrics]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant8:
+          receivers: [routing/traces]
+          processors: [resource/cluster, batch]
+          exporters: [otlp_http/traces]
+
+        # ── Tenant 9 – filter + cluster + env ──
+        logs/tenant9:
+          receivers: [routing/logs]
+          processors: [filter/drop_debug, resource/cluster, resource/env, batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant9:
+          receivers: [routing/metrics]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant9:
+          receivers: [routing/traces]
+          processors: [resource/cluster, resource/env, batch]
+          exporters: [otlp_http/traces]
+
+        # ── Tenant 10 – batch only (like tenant 1) ──
+        logs/tenant10:
+          receivers: [routing/logs]
+          processors: [batch]
+          exporters: [otlp_http/logs]
+        metrics/tenant10:
+          receivers: [routing/metrics]
+          processors: [batch]
+          exporters: [otlp_http/metrics]
+        traces/tenant10:
+          receivers: [routing/traces]
+          processors: [batch]
+          exporters: [otlp_http/traces]
