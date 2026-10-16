@@ -11,6 +11,9 @@ spec:
 
   replicaCount: 1
 
+  nodeSelector:
+    load-test/role: load
+
   resources:
     requests:
       memory: "1Gi"

@@ -7,6 +7,9 @@ spec:
   retentionMaxDiskSpaceUsageBytes: "1600MiB"
   removePvcAfterDelete: true
 
+  nodeSelector:
+    load-test/role: load
+
   resources:
     requests:
       memory: "1Gi"

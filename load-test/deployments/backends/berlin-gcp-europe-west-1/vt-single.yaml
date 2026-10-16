@@ -11,6 +11,9 @@ spec:
   grpcSpec:
     listenPort: 4317
 
+  nodeSelector:
+    load-test/role: load
+
   resources:
     requests:
       memory: "1Gi"
