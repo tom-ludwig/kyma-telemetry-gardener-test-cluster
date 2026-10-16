@@ -48,3 +48,22 @@ spec:
   dependsOn:
     - name: vm-operator
     - name: load-test-backends-namespace
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: load-test-tooling
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./load-test/deployments/tooling/berlin-gcp-europe-west-1
+  prune: true
+  wait: true
+  dependsOn:
+    - name: otel-load-test-namespace
+    - name: load-test-backends-namespace
