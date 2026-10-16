@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: loadtest
+  namespace: otel-load-test
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      serviceAccountName: loadtest
+      restartPolicy: Never
+      nodeSelector:
+        load-test/role: load
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: loadtest
+          image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/loadtest:main
+          imagePullPolicy: Always
+          args:
+            - -matrix
+            # single run instead, e.g.:
+            # - -shape=F1
+            # - -tenants=20
+            # - -load=B
+            # - -rate=500
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
