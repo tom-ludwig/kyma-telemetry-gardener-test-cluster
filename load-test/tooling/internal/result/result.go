@@ -284,10 +284,13 @@ func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Rec
 	}
 	for _, sig := range spec.Signals {
 		sel, t := SelectorsFor(s, sig), sig.Item
-		offered := float64(s.OfferedRate(sig))
+		healthyShare := 1.0
 		if s.Health == spec.Faulty {
-			offered = offered * float64(s.Tenants-1) / float64(s.Tenants)
+			healthyShare = float64(s.Tenants-1) / float64(s.Tenants)
 		}
+		offered := float64(s.OfferedRate(sig)) * healthyShare
+		// generators deliver ~1 % below plan, so backend loss is judged against what the collector received
+		received := rec.Signals[sig.Name].ReceivedPerS * healthyShare
 		held = append(held,
 			struct{ id, q string }{"H3:" + sig.Name, fmt.Sprintf(`(sum(rate(otelcol_exporter_enqueue_failed_%[1]s_total{%[2]s}[5m])) > 0) or (sum(rate(otelcol_exporter_send_failed_%[1]s_total{%[2]s}[5m])) > 0)`, t, sel.Healthy)},
 			struct{ id, q string }{"S1:" + sig.Name, fmt.Sprintf(`sum(rate(otelcol_receiver_refused_%s_total{%s}[5m])) > 0`, t, sel.Run)},
@@ -296,7 +299,7 @@ func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Rec
 		if s.Load == spec.LoadA {
 			held = append(held, struct{ id, q string }{"H4:" + sig.Name, fmt.Sprintf(`sum(rate(otelcol_exporter_sent_%s_total{%s}[1m])) < %f`, t, sel.Healthy, 0.95*offered)})
 		}
-		if rec.Signals[sig.Name].BackendIngestPerS < 0.99*offered {
+		if rec.Signals[sig.Name].BackendIngestPerS < 0.99*received {
 			rec.Limit.Add(Hit{ID: "H3", Signal: sig.Name, AtS: at(w.SteadyEnd)})
 		}
 	}
