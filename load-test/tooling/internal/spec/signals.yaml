@@ -10,6 +10,7 @@ signals:
     filterKey: trace_conditions      # filter processor field
     header: VT-Extra-Fields          # per-pipeline attribution
     ingestMetric: vt_rows_ingested_total
+    ingestFilter: type!="internalinsert_index"   # VictoriaTraces also counts one trace-id index row per trace
     freeDiskMetric: vt_free_disk_space_bytes
     totalRate: 12000
     storedBytes: 40                  # compressed bytes per item, for the preflight disk estimate
