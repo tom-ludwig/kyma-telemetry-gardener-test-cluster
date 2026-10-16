@@ -1,7 +1,7 @@
 apiVersion: operator.victoriametrics.com/v1
 kind: VTSingle
 metadata:
-  name: vt-single
+  name: vt-single-test
 spec:
   retentionPeriod: "7d"
 

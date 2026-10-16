@@ -135,23 +135,23 @@ spec:
         error_mode: ignore
         logs:
           log_record:
-            - 'severity_number < SEVERITY_NUMBER_INFO'
+            - "severity_number < SEVERITY_NUMBER_INFO"
 
     exporters:
       otlp_http/metrics:
-        metrics_endpoint: "http://vmsingle-vm-single.hard-coded-otel-collector-test.svc.cluster.local:8428/opentelemetry/api/v1/push"
+        metrics_endpoint: "http://vmsingle-test-vm-single.hard-coded-otel-collector-test.svc.cluster.local:8428/opentelemetry/api/v1/push"
         sending_queue:
           enabled: true
           queue_size: 5000
 
       otlp_http/logs:
-        logs_endpoint: "http://vlsingle-vl-single.hard-coded-otel-collector-test.svc.cluster.local:9428/insert/opentelemetry/v1/logs"
+        logs_endpoint: "http://vlsingle-test-vl-single.hard-coded-otel-collector-test.svc.cluster.local:9428/insert/opentelemetry/v1/logs"
         sending_queue:
           enabled: true
           queue_size: 5000
 
       otlp_http/traces:
-        traces_endpoint: "http://vtsingle-vt-single.hard-coded-otel-collector-test.svc.cluster.local:4318/v1/traces"
+        traces_endpoint: "http://vtsingle-test-vt-single.hard-coded-otel-collector-test.svc.cluster.local:4318/v1/traces"
         sending_queue:
           enabled: true
           queue_size: 5000
