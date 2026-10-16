@@ -178,8 +178,9 @@ func (r *Runner) restartBackends(ctx context.Context) error {
 			return err
 		}
 	}
-	return poll(ctx, 5*time.Minute, "fresh backends", func() (bool, error) {
-		pods, err := r.backendPods(ctx)
+	var pods map[string]corev1.Pod
+	err = poll(ctx, 5*time.Minute, "fresh backends", func() (bool, error) {
+		pods, err = r.backendPods(ctx)
 		if err != nil {
 			return false, err
 		}
@@ -187,6 +188,20 @@ func (r *Runner) restartBackends(ctx context.Context) error {
 			p, ok := pods[sig.Backend]
 			if !ok || p.UID == old[sig.Backend].UID || !podReady(p) {
 				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		return err
+	}
+	// the watchdog reads the new pods' disk metrics; they reach vm-single only after a scrape
+	return poll(ctx, 3*time.Minute, "fresh backend metrics", func() (bool, error) {
+		for _, sig := range spec.Signals {
+			q := fmt.Sprintf(`min(%s{namespace=%q,pod=%q})`, sig.FreeDiskMetric, manifests.BackendNamespace, pods[sig.Backend].Name)
+			_, ok, err := r.p.Value(ctx, q, time.Now())
+			if err != nil || !ok {
+				return false, err
 			}
 		}
 		return true, nil
