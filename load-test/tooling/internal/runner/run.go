@@ -27,9 +27,10 @@ type Runner struct {
 	genCPU, genMemory        resource.Quantity
 	done                     map[string]*result.Record // records of this process by run ID
 	runFn                    func(context.Context, spec.RunSpec) (*result.Record, error)
+	skipPreflight            bool
 }
 
-func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration, args []string) (*Runner, error) {
+func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration, args []string, skipPreflight bool) (*Runner, error) {
 	cpu, memory, err := manifests.GeneratorRequests()
 	if err != nil {
 		return nil, err
@@ -37,6 +38,7 @@ func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration,
 	r := &Runner{
 		k: k, p: p, warmup: warmup, steady: steady, cooldown: cooldown, args: args,
 		genCPU: cpu, genMemory: memory, done: map[string]*result.Record{},
+		skipPreflight: skipPreflight,
 	}
 	r.runFn = r.Run
 	return r, nil

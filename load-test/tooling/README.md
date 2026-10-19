@@ -39,18 +39,19 @@ args: [-shape=R1, -tenants=50, -load=B, -rate=500]
 args: [-shape=F1, -tenants=3, -warmup=1m, -steady=3m, -cooldown=1m]   # short dry run
 ```
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `-shape` | `F1` | `F1`: every pipeline gets every item and filters its tenant. `R1`: one input pipeline routes each item to its tenant's pipeline. |
-| `-tenants` | `1` | Tenants; each has 3 pipelines (traces, metrics, logs). |
-| `-load` | `A` | `A`: fixed total per signal split across tenants. `B`: `-rate` per tenant. |
-| `-rate` | `1000` | Load B: items/s per signal per tenant. |
-| `-health` | `healthy` | `faulty`: pipeline `p-000` of each signal exports to the fault backend. |
-| `-rep` | `1` | Repetition number. |
-| `-matrix` | off | Binary search per shape × load (1, then 100 tenants, then halve), faulty runs at 5, 20 and 100 tenants, each after the healthy run of the same size, 3 repetitions at 5 tenants and at each limit. |
-| `-only` | | Matrix: only run IDs matching this glob. |
-| `-warmup`, `-steady`, `-cooldown` | `5m`, `20m`, `3m` | Run phases; only `-steady` is measured. |
-| `-vm-url` | `http://vmsingle-vm-single.monitoring.svc:8428` | Self-monitoring vm-single. |
+| Flag                              | Default                                         | Meaning                                                                                                                                                                                            |
+| --------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-shape`                          | `F1`                                            | `F1`: every pipeline gets every item and filters its tenant. `R1`: one input pipeline routes each item to its tenant's pipeline.                                                                   |
+| `-tenants`                        | `1`                                             | Tenants; each has 3 pipelines (traces, metrics, logs).                                                                                                                                             |
+| `-load`                           | `A`                                             | `A`: fixed total per signal split across tenants. `B`: `-rate` per tenant.                                                                                                                         |
+| `-rate`                           | `1000`                                          | Load B: items/s per signal per tenant.                                                                                                                                                             |
+| `-health`                         | `healthy`                                       | `faulty`: pipeline `p-000` of each signal exports to the fault backend.                                                                                                                            |
+| `-rep`                            | `1`                                             | Repetition number.                                                                                                                                                                                 |
+| `-matrix`                         | off                                             | Binary search per shape × load (1, then 100 tenants, then halve), faulty runs at 5, 20 and 100 tenants, each after the healthy run of the same size, 3 repetitions at 5 tenants and at each limit. |
+| `-only`                           |                                                 | Matrix: only run IDs matching this glob.                                                                                                                                                           |
+| `-warmup`, `-steady`, `-cooldown` | `5m`, `20m`, `3m`                               | Run phases; only `-steady` is measured.                                                                                                                                                            |
+| `-vm-url`                         | `http://vmsingle-vm-single.monitoring.svc:8428` | Self-monitoring vm-single.                                                                                                                                                                         |
+| `-skip-preflight`                 | off                                             | Skip preflight cluster capacity, backend readiness, and disk checks.                                                                                                                               |
 
 ## Results
 

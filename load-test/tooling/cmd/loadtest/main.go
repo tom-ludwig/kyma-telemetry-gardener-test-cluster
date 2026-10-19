@@ -36,14 +36,15 @@ func main() {
 	warmup := flag.Duration("warmup", 5*time.Minute, "warm-up, not measured")
 	steady := flag.Duration("steady", 20*time.Minute, "measured steady state")
 	cooldown := flag.Duration("cooldown", 3*time.Minute, "cool-down after the load stops")
+	skipPreflight := flag.Bool("skip-preflight", false, "skip preflight capacity, backend readiness and disk checks")
 	flag.Parse()
 
-	if err := run(s, *matrix, *only, *vmURL, *warmup, *steady, *cooldown); err != nil {
+	if err := run(s, *matrix, *only, *vmURL, *warmup, *steady, *cooldown, *skipPreflight); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldown time.Duration) error {
+func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldown time.Duration, skipPreflight bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -55,7 +56,7 @@ func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldo
 	if err != nil {
 		return err
 	}
-	r, err := runner.New(k, result.Prom{API: promv1.NewAPI(promClient)}, warmup, steady, cooldown, os.Args[1:])
+	r, err := runner.New(k, result.Prom{API: promv1.NewAPI(promClient)}, warmup, steady, cooldown, os.Args[1:], skipPreflight)
 	if err != nil {
 		return err
 	}

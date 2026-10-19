@@ -40,6 +40,10 @@ func (r *Runner) preflight(ctx context.Context, s spec.RunSpec) (nodes, error) {
 	if err != nil {
 		return n, err
 	}
+	if r.skipPreflight {
+		log.Printf("%s: preflight capacity, backend readiness and disk checks skipped (-skip-preflight)", s.ID())
+		return n, nil
+	}
 	if err := r.checkBackendsReady(ctx); err != nil {
 		return n, err
 	}
@@ -74,6 +78,9 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 	}
 	if n.collector == "" || len(n.load) == 0 {
 		return n, fmt.Errorf("need one node labelled %s=collector and at least one %s=load", manifests.RoleLabel, manifests.RoleLabel)
+	}
+	if r.skipPreflight {
+		return n, nil
 	}
 	if err := r.checkCollectorNodeFree(ctx, n.collector); err != nil {
 		return n, err
