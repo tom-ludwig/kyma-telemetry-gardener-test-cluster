@@ -232,7 +232,7 @@ func generatorScript(s spec.RunSpec, sig spec.Signal, duration time.Duration) st
 			" --otlp-insecure --allow-export-failures"+
 			" --workers=%d --rate=%g"+
 			" --duration=%s"+
-			" --otlp-attributes=tenant=\"%s\"",
+			" --otlp-attributes='tenant=\"%s\"'",
 			sig.Name,
 			workers, float64(rate)/float64(workers),
 			duration,
