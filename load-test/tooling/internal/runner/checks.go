@@ -78,10 +78,10 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 	if err := r.checkCollectorNodeFree(ctx, n.collector); err != nil {
 		return n, err
 	}
-	containers := int64(len(spec.Signals) * s.Tenants)
+	pods := int64(len(spec.Signals)) // 1 pod per signal
 	need := corev1.ResourceList{
-		corev1.ResourceCPU:    *resource.NewMilliQuantity(containers*r.genCPU.MilliValue(), resource.DecimalSI),
-		corev1.ResourceMemory: *resource.NewQuantity(containers*r.genMemory.Value(), resource.BinarySI),
+		corev1.ResourceCPU:    *resource.NewMilliQuantity(pods*r.genCPU.MilliValue(), resource.DecimalSI),
+		corev1.ResourceMemory: *resource.NewQuantity(pods*r.genMemory.Value(), resource.BinarySI),
 	}
 	for name, q := range need {
 		free := loadAlloc[name].DeepCopy()

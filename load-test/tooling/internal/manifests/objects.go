@@ -31,7 +31,7 @@ const (
 	LoadNamespace = "otel-load-test"
 	RunLabel      = "loadtest.kyma-project.io/run"
 	RoleLabel     = "load-test/role"
-	tenantsPerPod = 10
+
 	// items/s per telemetrygen worker, well below its measured ~1600/s ceiling
 	itemsPerWorker = 500
 )
@@ -194,7 +194,7 @@ func FaultBackend(s spec.RunSpec) (*appsv1.Deployment, error) {
 	return &d, nil
 }
 
-// Generators: per signal ceil(N/10) Deployments, one telemetrygen container per tenant.
+// Generators: 1 Deployment per signal, each running a shell loop over all tenants.
 func Generators(s spec.RunSpec, duration time.Duration) ([]client.Object, error) {
 	var tmpl appsv1.Deployment
 	if err := readTemplate("generator.yaml", &tmpl); err != nil {
@@ -202,48 +202,49 @@ func Generators(s spec.RunSpec, duration time.Duration) ([]client.Object, error)
 	}
 	var objs []client.Object
 	for _, sig := range spec.Signals {
-		for start := 0; start < s.Tenants; start += tenantsPerPod {
-			objs = append(objs, generator(&tmpl, s, sig, start, duration))
-		}
+		objs = append(objs, generator(&tmpl, s, sig, duration))
 	}
 	return objs, nil
 }
 
-func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, start int, duration time.Duration) *appsv1.Deployment {
+func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, duration time.Duration) *appsv1.Deployment {
 	d := tmpl.DeepCopy()
-	d.Name = fmt.Sprintf("gen-%s-%d", sig.Name, start/tenantsPerPod)
+	d.Name = fmt.Sprintf("gen-%s", sig.Name)
 	app := map[string]string{"app": d.Name}
 	d.Labels = merge(app, RunLabels(s))
 	d.Spec.Selector.MatchLabels = app
 	d.Spec.Template.Labels = merge(app, RunLabels(s))
 
-	base := tmpl.Spec.Template.Spec.Containers[0]
-	d.Spec.Template.Spec.Containers = nil
-	for i := start; i < min(start+tenantsPerPod, s.Tenants); i++ {
-		d.Spec.Template.Spec.Containers = append(d.Spec.Template.Spec.Containers, generatorContainer(base, s, sig, i, duration))
-	}
+	c := &d.Spec.Template.Spec.Containers[0]
+	c.Name = sig.Name
+	c.Args = []string{generatorScript(s, sig, duration)}
 	return d
 }
 
-// generatorContainer copies the template container for one tenant of one signal.
-// The template's first arg is the example signal and gets replaced.
-func generatorContainer(base corev1.Container, s spec.RunSpec, sig spec.Signal, tenant int, duration time.Duration) corev1.Container {
-	c := *base.DeepCopy()
-	c.Name = fmt.Sprintf("%s-%s", sig.Name, spec.PipelineID(tenant))
-	c.Args = append([]string{sig.Name}, base.Args[1:]...)
-	rate := s.TenantRate(sig)
-	workers := Workers(rate)
-	c.Args = append(c.Args,
-		fmt.Sprintf("--workers=%d", workers),
-		fmt.Sprintf("--rate=%g", float64(rate)/float64(workers)),
-		"--duration="+duration.String(),
-		fmt.Sprintf(`--otlp-attributes=tenant="%s"`, spec.TenantID(tenant)),
-	)
-	if sig.BodyBytes == 0 {
-		return c
+// generatorScript builds the shell script that launches one telemetrygen per tenant.
+func generatorScript(s spec.RunSpec, sig spec.Signal, duration time.Duration) string {
+	var b strings.Builder
+	for i := range s.Tenants {
+		rate := s.TenantRate(sig)
+		workers := Workers(rate)
+		fmt.Fprintf(&b, "telemetrygen %s"+
+			" --otlp-endpoint=otelcol.otel-load-test.svc:4317"+
+			" --otlp-insecure --allow-export-failures"+
+			" --workers=%d --rate=%g"+
+			" --duration=%s"+
+			" --otlp-attributes=tenant=\"%s\"",
+			sig.Name,
+			workers, float64(rate)/float64(workers),
+			duration,
+			spec.TenantID(i),
+		)
+		if sig.BodyBytes > 0 {
+			fmt.Fprintf(&b, " --body=%s", strings.Repeat("x", sig.BodyBytes))
+		}
+		b.WriteString(" &\n")
 	}
-	c.Args = append(c.Args, "--body="+strings.Repeat("x", sig.BodyBytes))
-	return c
+	b.WriteString("wait\n")
+	return b.String()
 }
 
 func merge(a, b map[string]string) map[string]string {

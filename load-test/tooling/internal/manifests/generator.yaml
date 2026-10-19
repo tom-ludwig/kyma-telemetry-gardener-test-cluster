@@ -1,5 +1,5 @@
-# telemetrygen template. Per run the tool sets name and labels and copies the container
-# once per tenant, adding the signal, --rate, --duration and the tenant attribute.
+# telemetrygen template. Per run the tool creates 1 Deployment per signal.
+# The container runs a shell loop spawning one telemetrygen process per tenant.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,15 +21,13 @@ spec:
         load-test/role: load
       containers:
         - name: telemetrygen
-          image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.163.0
+          image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0
+          command: ["/bin/sh", "-c"]
           args:
-            - traces
-            - --otlp-endpoint=otelcol.otel-load-test.svc:4317
-            - --otlp-insecure
-            - --allow-export-failures
+            - placeholder
           resources:
             requests:
-              cpu: 20m
-              memory: 32Mi
+              cpu: 500m
+              memory: 256Mi
             limits:
-              memory: 128Mi
+              memory: 512Mi

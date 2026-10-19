@@ -1,7 +1,7 @@
 package manifests
 
 import (
-	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,9 +84,9 @@ func TestGeneratorWorkers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		args := objs[0].(*appsv1.Deployment).Spec.Template.Spec.Containers[0].Args
-		if !slices.Contains(args, want[0]) || !slices.Contains(args, want[1]) {
-			t.Errorf("rate %d: args %v, want %v", rate, args, want)
+		script := objs[0].(*appsv1.Deployment).Spec.Template.Spec.Containers[0].Args[0]
+		if !strings.Contains(script, want[0]) || !strings.Contains(script, want[1]) {
+			t.Errorf("rate %d: script %q, want %v", rate, script, want)
 		}
 	}
 }
