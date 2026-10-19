@@ -34,8 +34,8 @@ func TestCollectorObjects(t *testing.T) {
 		}
 		containers, _, _ := unstructured.NestedSlice(u.Object, "spec", "template", "spec", "containers")
 		limit, _, _ := unstructured.NestedString(containers[0].(map[string]any), "resources", "limits", "memory")
-		if limit != "6750Mi" {
-			t.Errorf("memory limit %q, want 6750Mi (750 + 3·2·1000)", limit)
+		if limit != "4096Mi" {
+			t.Errorf("memory limit %q, want 4096Mi", limit)
 		}
 	}
 	want := map[string]int{"ConfigMap": 1, "ServiceAccount": 1, "Deployment": 1, "Service": 2, "VMPodScrape": 1}

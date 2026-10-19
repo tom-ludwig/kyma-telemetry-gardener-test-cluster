@@ -30,4 +30,5 @@ spec:
               cpu: 500m
               memory: 256Mi
             limits:
-              memory: 512Mi
+              # HACK: quick-fix hardcoding 4Gi to avoid OOM when multiplexing tenants; revisit later
+              memory: 4Gi

@@ -123,8 +123,11 @@ func (s RunSpec) OfferedRate(sig Signal) int { return s.TenantRate(sig) * s.Tena
 // QueueSize mirrors TM: 256 batches split over the pipelines of one signal.
 func (s RunSpec) QueueSize() int { return max(1, 256/s.Tenants) }
 
-// MemoryLimitMi is the TM gateway formula: 750Mi + 1000Mi per pipeline (all signals).
-func (s RunSpec) MemoryLimitMi() int { return 750 + 1000*len(Signals)*s.Tenants }
+// HACK: quick-fix hardcoding 4Gi instead of a proper dynamic calculation; revisit later
+const CollectorMemoryLimitMi = 4096
+
+// MemoryLimitMi returns the fixed collector memory limit (4 GiB).
+func (s RunSpec) MemoryLimitMi() int { return CollectorMemoryLimitMi }
 
 func TenantID(i int) string   { return fmt.Sprintf("tenant-%03d", i) }
 func PipelineID(i int) string { return fmt.Sprintf("p-%03d", i) }

@@ -30,8 +30,8 @@ func TestRates(t *testing.T) {
 	if got := (RunSpec{Tenants: 300}).QueueSize(); got != 1 {
 		t.Errorf("queue size floor = %d, want 1", got)
 	}
-	if got := (RunSpec{Tenants: 100}).MemoryLimitMi(); got != 750+300*1000 {
-		t.Errorf("memory limit = %d", got)
+	if got := (RunSpec{Tenants: 100}).MemoryLimitMi(); got != 4096 {
+		t.Errorf("memory limit = %d, want 4096", got)
 	}
 }
 
