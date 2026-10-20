@@ -6,7 +6,8 @@ metadata:
 ---
 # Collector under test, mirroring the telemetry-manager OTLP gateway
 # (internal/resources/otelcollector/testdata/otlp-gateway.yaml).
-# Per run the tool sets the run label and the memory limit; the config comes from ConfigMap otelcol.
+# Per run the tool sets the run label and the memory limit; the config comes in parts from
+# ConfigMaps otelcol-0..N, each mounted via the projected volume and passed as its own --config.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -40,8 +41,7 @@ spec:
       containers:
         - name: otelcol
           image: otel/opentelemetry-collector-contrib:0.161.0
-          args:
-            - --config=/conf/relay.conf
+          # args: one --config=file:/conf/relay-<i>.conf per part, set by the tool
           env:
             - name: MY_POD_IP
               valueFrom:
@@ -91,11 +91,9 @@ spec:
               mountPath: /conf
       volumes:
         - name: config
-          configMap:
-            name: otelcol
-            items:
-              - key: relay.conf
-                path: relay.conf
+          projected:
+            # one configMap source per part, set by the tool
+            sources: []
 ---
 # Without TM's internalTrafficPolicy: Local, because the generators run on another node
 apiVersion: v1
