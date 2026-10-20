@@ -223,27 +223,32 @@ func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, duratio
 
 // generatorScript builds the shell script that launches one telemetrygen per tenant.
 func generatorScript(s spec.RunSpec, sig spec.Signal, duration time.Duration) string {
+	rate := s.TenantRate(sig)
+	workers := Workers(rate)
 	var b strings.Builder
-	for i := range s.Tenants {
-		rate := s.TenantRate(sig)
-		workers := Workers(rate)
-		fmt.Fprintf(&b, "telemetrygen %s"+
-			" --otlp-endpoint=otelcol.otel-load-test.svc:4317"+
-			" --otlp-insecure --allow-export-failures"+
-			" --workers=%d --rate=%g"+
-			" --duration=%s"+
-			" --otlp-attributes='tenant=\"%s\"'",
-			sig.Name,
-			workers, float64(rate)/float64(workers),
-			duration,
-			spec.TenantID(i),
-		)
-		if sig.BodyBytes > 0 {
-			fmt.Fprintf(&b, " --body=%s", strings.Repeat("x", sig.BodyBytes))
-		}
-		b.WriteString(" &\n")
+	if sig.BodyBytes > 0 {
+		fmt.Fprintf(&b, "BODY=$(printf '%%%ds' '' | tr ' ' 'x')\n", sig.BodyBytes)
 	}
-	b.WriteString("wait\n")
+	bodyArg := ""
+	if sig.BodyBytes > 0 {
+		bodyArg = ` --body="$BODY"`
+	}
+	fmt.Fprintf(&b, `for i in $(seq 0 %d); do
+  telemetrygen %s \
+    --otlp-endpoint=otelcol.otel-load-test.svc:4317 \
+    --otlp-insecure --allow-export-failures \
+    --workers=%d --rate=%g \
+    --duration=%s \
+    --otlp-attributes=tenant=\"$(printf 'tenant-%%03d' $i)\"%s &
+done
+wait
+`,
+		s.Tenants-1,
+		sig.Name,
+		workers, float64(rate)/float64(workers),
+		duration,
+		bodyArg,
+	)
 	return b.String()
 }
 

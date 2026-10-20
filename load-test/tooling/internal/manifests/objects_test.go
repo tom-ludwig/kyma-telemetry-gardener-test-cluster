@@ -88,7 +88,7 @@ func TestGeneratorWorkers(t *testing.T) {
 		if !strings.Contains(script, want[0]) || !strings.Contains(script, want[1]) {
 			t.Errorf("rate %d: script %q, want %v", rate, script, want)
 		}
-		if wantAttr := `--otlp-attributes='tenant="tenant-000"'`; !strings.Contains(script, wantAttr) {
+		if wantAttr := `tenant=\"$(printf 'tenant-%03d' $i)\"`; !strings.Contains(script, wantAttr) {
 			t.Errorf("script missing %q", wantAttr)
 		}
 	}
