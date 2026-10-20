@@ -67,13 +67,18 @@ func TestPipelineProcessorsDefined(t *testing.T) {
 
 func TestBuildConfigRouting(t *testing.T) {
 	cfg, stats := parseConfig(t, spec.RunSpec{Shape: spec.ShapeR1, Tenants: 100, Load: spec.LoadA})
-	// /in pipelines: 5 + 4 + 6 processors; none in the tenant pipelines
-	if stats.ServicePipelines != 3*100+3 || stats.Exporters != 300 || stats.ProcessorInstances != 15 {
+	// /in pipelines: 5 + 4 + 6 processors; one batch per tenant pipeline
+	if stats.ServicePipelines != 3*100+3 || stats.Exporters != 300 || stats.ProcessorInstances != 3*100+15 {
 		t.Errorf("stats %+v", stats)
 	}
 	table := cfg["connectors"].(map[string]any)["routing/logs"].(map[string]any)["table"].([]any)
 	if len(table) != 100 {
 		t.Errorf("routing table has %d entries", len(table))
+	}
+	pipeline := cfg["service"].(map[string]any)["pipelines"].(map[string]any)["logs/p-000"].(map[string]any)
+	processors, ok := pipeline["processors"].([]any)
+	if !ok || len(processors) != 1 || processors[0] != "batch" {
+		t.Errorf("tenant pipeline processors: %v, want [batch]", pipeline["processors"])
 	}
 }
 
