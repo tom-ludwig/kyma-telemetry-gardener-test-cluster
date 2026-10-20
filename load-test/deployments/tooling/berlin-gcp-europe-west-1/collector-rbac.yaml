@@ -1,0 +1,26 @@
+# Read access for the k8s_attributes processor of the collector under test, same rules as the
+# telemetry-manager OTLP gateway. The tool creates ServiceAccount otelcol per run.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otelcol
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, pods, nodes]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otelcol
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otelcol
+subjects:
+  - kind: ServiceAccount
+    name: otelcol
+    namespace: otel-load-test
