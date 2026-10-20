@@ -91,7 +91,7 @@ func (c *collectorConfig) addFanOut(s spec.RunSpec, sig spec.Signal) {
 	}
 }
 
-// addRouting: one input pipeline batches once and routes each item to its tenant's pipeline.
+// addRouting: one input pipeline routes each item to its tenant's pipeline, which batches before export.
 func (c *collectorConfig) addRouting(s spec.RunSpec, sig spec.Signal) {
 	connector := "routing/" + sig.Name
 	table := make([]any, 0, s.Tenants)
@@ -103,9 +103,11 @@ func (c *collectorConfig) addRouting(s spec.RunSpec, sig spec.Signal) {
 			"pipelines": []any{pipelineName(sig, i)},
 		})
 		c.pipelines[pipelineName(sig, i)] = map[string]any{
-			"receivers": []any{connector},
-			"exporters": []any{exporterName(sig, i)},
+			"receivers":  []any{connector},
+			"processors": []any{"batch"},
+			"exporters":  []any{exporterName(sig, i)},
 		}
+		c.processorInstances++
 	}
 	c.connectors[connector] = map[string]any{"error_mode": "ignore", "table": table}
 	c.pipelines[sig.Name+"/in"] = map[string]any{
