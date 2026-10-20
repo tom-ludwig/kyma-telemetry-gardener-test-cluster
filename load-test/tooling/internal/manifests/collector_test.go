@@ -25,7 +25,8 @@ func parseConfig(t *testing.T, s spec.RunSpec) (map[string]any, ConfigStats) {
 func TestBuildConfigFanOut(t *testing.T) {
 	for _, n := range []int{1, 100} {
 		cfg, stats := parseConfig(t, spec.RunSpec{Shape: spec.ShapeF1, Tenants: n, Load: spec.LoadA})
-		if stats.ServicePipelines != 3*n || stats.Exporters != 3*n || stats.ProcessorInstances != 9*n {
+		// logs and traces: 9 processors per pipeline; metrics: 7 in the enrichment pipeline, 3 per pipeline
+		if stats.ServicePipelines != 3*n+1 || stats.Exporters != 3*n || stats.ProcessorInstances != 21*n+7 {
 			t.Errorf("n=%d: stats %+v", n, stats)
 		}
 		filters := 0
@@ -37,15 +38,37 @@ func TestBuildConfigFanOut(t *testing.T) {
 		if filters != 3*n {
 			t.Errorf("n=%d: %d filters, want %d", n, filters, 3*n)
 		}
-		if _, ok := cfg["connectors"]; ok {
-			t.Error("F1 must not have connectors")
+		connectors := cfg["connectors"].(map[string]any)
+		if _, ok := connectors["forward/enrichment"]; !ok || len(connectors) != 1 {
+			t.Errorf("n=%d: connectors %v, want only forward/enrichment", n, connectors)
+		}
+	}
+}
+
+func TestPipelineProcessorsDefined(t *testing.T) {
+	for _, shape := range []string{spec.ShapeF1, spec.ShapeR1} {
+		cfg, _ := parseConfig(t, spec.RunSpec{Shape: shape, Tenants: 2, Load: spec.LoadA})
+		processors := cfg["processors"].(map[string]any)
+		for name, p := range cfg["service"].(map[string]any)["pipelines"].(map[string]any) {
+			list, _ := p.(map[string]any)["processors"].([]any)
+			for _, proc := range list {
+				if _, ok := processors[proc.(string)]; !ok {
+					t.Errorf("%s %s: processor %s not defined", shape, name, proc)
+				}
+			}
+		}
+	}
+	for _, sig := range spec.Signals {
+		if len(enrichment[sig.Name]) == 0 {
+			t.Errorf("signal %s has no enrichment chain", sig.Name)
 		}
 	}
 }
 
 func TestBuildConfigRouting(t *testing.T) {
 	cfg, stats := parseConfig(t, spec.RunSpec{Shape: spec.ShapeR1, Tenants: 100, Load: spec.LoadA})
-	if stats.ServicePipelines != 3*100+3 || stats.Exporters != 300 {
+	// /in pipelines: 7 + 7 + 8 processors; 1 per tenant pipeline
+	if stats.ServicePipelines != 3*100+3 || stats.Exporters != 300 || stats.ProcessorInstances != 300+22 {
 		t.Errorf("stats %+v", stats)
 	}
 	table := cfg["connectors"].(map[string]any)["routing/logs"].(map[string]any)["table"].([]any)
