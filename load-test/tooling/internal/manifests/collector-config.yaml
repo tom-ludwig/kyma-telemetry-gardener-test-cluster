@@ -1,6 +1,8 @@
 # Static part of the collector config, copied from the telemetry-manager OTLP gateway
 # (internal/otelcollector/config/otlpgateway/testdata/service-enrichment-otel.yaml).
-# Kyma-only processors (istio_noise_filter, istio_enrichment) are left out.
+# Left out: Kyma-only processors (istio_noise_filter, istio_enrichment) and the transforms
+# that never change telemetrygen data (Istio, unknown service name, OTel annotations, kymastats scope).
+# kyma.* attributes only exist on metrics (kyma.input.name), so drop-kyma-attributes runs for metrics only.
 # The tool adds filter processors, exporters, connectors and pipelines per run.
 extensions:
   cgroup_runtime:
@@ -63,13 +65,6 @@ processors:
         - from: node
           key: kubernetes.io/arch
           tag_name: host.arch
-      annotations:
-        - from: pod
-          key: resource.opentelemetry.io/service.name
-          tag_name: kyma.otel.annotation.service.name
-        - from: pod
-          key: resource.opentelemetry.io/service.version
-          tag_name: kyma.otel.annotation.service.version
       otel_annotations: true
     pod_association:
       - sources:
@@ -80,33 +75,11 @@ processors:
             name: k8s.pod.uid
       - sources:
           - from: connection
-  transform/drop-istio-service-enrichment:
-    error_mode: ignore
-    trace_statements:
-      - statements:
-          - delete_matching_keys(resource.attributes, "service.*") where span.attributes["component"] == "proxy"
   transform/drop-kyma-attributes:
     error_mode: ignore
-    log_statements:
-      - statements:
-          - delete_matching_keys(resource.attributes, "kyma.*")
     metric_statements:
       - statements:
           - delete_matching_keys(resource.attributes, "kyma.*")
-    trace_statements:
-      - statements:
-          - delete_matching_keys(resource.attributes, "kyma.*")
-  transform/drop-unknown-service-name:
-    error_mode: ignore
-    log_statements:
-      - statements:
-          - delete_key(resource.attributes, "service.name") where resource.attributes["service.name"] != nil and HasPrefix(resource.attributes["service.name"], "unknown_service")
-    metric_statements:
-      - statements:
-          - delete_key(resource.attributes, "service.name") where resource.attributes["service.name"] != nil and HasPrefix(resource.attributes["service.name"], "unknown_service")
-    trace_statements:
-      - statements:
-          - delete_key(resource.attributes, "service.name") where resource.attributes["service.name"] != nil and HasPrefix(resource.attributes["service.name"], "unknown_service")
   transform/insert-cluster-attributes:
     error_mode: ignore
     log_statements:
@@ -124,32 +97,6 @@ processors:
           - set(resource.attributes["k8s.cluster.name"], "${KUBERNETES_SERVICE_HOST}") where resource.attributes["k8s.cluster.name"] == nil or resource.attributes["k8s.cluster.name"] == ""
           - set(resource.attributes["k8s.cluster.uid"], "") where resource.attributes["k8s.cluster.uid"] == nil or resource.attributes["k8s.cluster.uid"] == ""
           - set(resource.attributes["cloud.provider"], "gcp") where resource.attributes["cloud.provider"] == nil or resource.attributes["cloud.provider"] == ""
-  transform/restore-otel-service-attrs:
-    error_mode: ignore
-    log_statements:
-      - statements:
-          - set(resource.attributes["service.name"], resource.attributes["kyma.otel.annotation.service.name"]) where resource.attributes["kyma.otel.annotation.service.name"] != nil and resource.attributes["kyma.otel.annotation.service.name"] != ""
-          - delete_key(resource.attributes, "kyma.otel.annotation.service.name")
-          - set(resource.attributes["service.version"], resource.attributes["kyma.otel.annotation.service.version"]) where resource.attributes["kyma.otel.annotation.service.version"] != nil and resource.attributes["kyma.otel.annotation.service.version"] != ""
-          - delete_key(resource.attributes, "kyma.otel.annotation.service.version")
-    metric_statements:
-      - statements:
-          - set(resource.attributes["service.name"], resource.attributes["kyma.otel.annotation.service.name"]) where resource.attributes["kyma.otel.annotation.service.name"] != nil and resource.attributes["kyma.otel.annotation.service.name"] != ""
-          - delete_key(resource.attributes, "kyma.otel.annotation.service.name")
-          - set(resource.attributes["service.version"], resource.attributes["kyma.otel.annotation.service.version"]) where resource.attributes["kyma.otel.annotation.service.version"] != nil and resource.attributes["kyma.otel.annotation.service.version"] != ""
-          - delete_key(resource.attributes, "kyma.otel.annotation.service.version")
-    trace_statements:
-      - statements:
-          - set(resource.attributes["service.name"], resource.attributes["kyma.otel.annotation.service.name"]) where resource.attributes["kyma.otel.annotation.service.name"] != nil and resource.attributes["kyma.otel.annotation.service.name"] != ""
-          - delete_key(resource.attributes, "kyma.otel.annotation.service.name")
-          - set(resource.attributes["service.version"], resource.attributes["kyma.otel.annotation.service.version"]) where resource.attributes["kyma.otel.annotation.service.version"] != nil and resource.attributes["kyma.otel.annotation.service.version"] != ""
-          - delete_key(resource.attributes, "kyma.otel.annotation.service.version")
-  transform/set-instrumentation-scope-kyma:
-    error_mode: ignore
-    metric_statements:
-      - statements:
-          - set(scope.version, "1.0.0") where scope.name == "github.com/kyma-project/opentelemetry-collector-components/receiver/kymastatsreceiver"
-          - set(scope.name, "io.kyma-project.telemetry/kyma") where scope.name == "github.com/kyma-project/opentelemetry-collector-components/receiver/kymastatsreceiver"
   transform/set-kyma-input-name-otlp:
     error_mode: ignore
     metric_statements:

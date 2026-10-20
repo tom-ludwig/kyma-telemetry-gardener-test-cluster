@@ -78,15 +78,18 @@ func BuildConfig(s spec.RunSpec) ([]byte, ConfigStats, error) {
 	}, nil
 }
 
-// enrichment is the TM gateway processing per signal, run before the per-pipeline processors.
+// enrichment is the TM gateway processing per signal that changes telemetrygen data,
+// run before the per-pipeline processors.
 // TM sets kyma.input.name in its own input pipeline; with OTLP as the only input it runs here.
 var enrichment = map[string][]any{
-	"logs": {"transform/set-observed-time-if-zero", "transform/drop-unknown-service-name", "k8s_attributes",
-		"transform/restore-otel-service-attrs", "transform/insert-cluster-attributes"},
-	"traces": {"transform/drop-istio-service-enrichment", "transform/drop-unknown-service-name", "k8s_attributes",
-		"transform/restore-otel-service-attrs", "transform/insert-cluster-attributes"},
-	"metrics": {"transform/set-kyma-input-name-otlp", "transform/set-instrumentation-scope-kyma", "transform/drop-unknown-service-name",
-		"k8s_attributes", "transform/restore-otel-service-attrs", "transform/insert-cluster-attributes"},
+	"logs":    {"transform/set-observed-time-if-zero", "k8s_attributes", "transform/insert-cluster-attributes"},
+	"traces":  {"k8s_attributes", "transform/insert-cluster-attributes"},
+	"metrics": {"transform/set-kyma-input-name-otlp", "k8s_attributes", "transform/insert-cluster-attributes"},
+}
+
+// perPipeline is the TM processing each pipeline runs before its filter.
+var perPipeline = map[string][]any{
+	"metrics": {"transform/drop-kyma-attributes"},
 }
 
 // addFanOut: N pipelines share the otlp receiver; each enriches, then keeps only its tenant.
@@ -108,7 +111,7 @@ func (c *collectorConfig) addFanOut(s spec.RunSpec, sig spec.Signal) {
 	for i := range s.Tenants {
 		filter := fmt.Sprintf("filter/%s-%s", sig.Name, spec.PipelineID(i))
 		c.processors[filter] = filterConfig(sig, spec.TenantID(i))
-		processors := slices.Concat(head, []any{"transform/drop-kyma-attributes", filter, "batch"})
+		processors := slices.Concat(head, perPipeline[sig.Name], []any{filter, "batch"})
 		c.pipelines[pipelineName(sig, i)] = map[string]any{
 			"receivers":  []any{receiver},
 			"processors": processors,
@@ -130,14 +133,12 @@ func (c *collectorConfig) addRouting(s spec.RunSpec, sig spec.Signal) {
 			"pipelines": []any{pipelineName(sig, i)},
 		})
 		c.pipelines[pipelineName(sig, i)] = map[string]any{
-			"receivers":  []any{connector},
-			"processors": []any{"transform/drop-kyma-attributes"},
-			"exporters":  []any{exporterName(sig, i)},
+			"receivers": []any{connector},
+			"exporters": []any{exporterName(sig, i)},
 		}
-		c.processorInstances++
 	}
 	c.connectors[connector] = map[string]any{"error_mode": "ignore", "table": table}
-	processors := slices.Concat([]any{"memory_limiter"}, enrichment[sig.Name], []any{"batch"})
+	processors := slices.Concat([]any{"memory_limiter"}, enrichment[sig.Name], perPipeline[sig.Name], []any{"batch"})
 	c.pipelines[sig.Name+"/in"] = map[string]any{
 		"receivers":  []any{"otlp"},
 		"processors": processors,

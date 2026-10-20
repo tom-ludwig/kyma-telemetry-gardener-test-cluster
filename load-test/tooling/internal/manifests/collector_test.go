@@ -25,8 +25,8 @@ func parseConfig(t *testing.T, s spec.RunSpec) (map[string]any, ConfigStats) {
 func TestBuildConfigFanOut(t *testing.T) {
 	for _, n := range []int{1, 100} {
 		cfg, stats := parseConfig(t, spec.RunSpec{Shape: spec.ShapeF1, Tenants: n, Load: spec.LoadA})
-		// logs and traces: 9 processors per pipeline; metrics: 7 in the enrichment pipeline, 3 per pipeline
-		if stats.ServicePipelines != 3*n+1 || stats.Exporters != 3*n || stats.ProcessorInstances != 21*n+7 {
+		// logs: 6 and traces: 5 processors per pipeline; metrics: 4 in the enrichment pipeline, 3 per pipeline
+		if stats.ServicePipelines != 3*n+1 || stats.Exporters != 3*n || stats.ProcessorInstances != 14*n+4 {
 			t.Errorf("n=%d: stats %+v", n, stats)
 		}
 		filters := 0
@@ -67,8 +67,8 @@ func TestPipelineProcessorsDefined(t *testing.T) {
 
 func TestBuildConfigRouting(t *testing.T) {
 	cfg, stats := parseConfig(t, spec.RunSpec{Shape: spec.ShapeR1, Tenants: 100, Load: spec.LoadA})
-	// /in pipelines: 7 + 7 + 8 processors; 1 per tenant pipeline
-	if stats.ServicePipelines != 3*100+3 || stats.Exporters != 300 || stats.ProcessorInstances != 300+22 {
+	// /in pipelines: 5 + 4 + 6 processors; none in the tenant pipelines
+	if stats.ServicePipelines != 3*100+3 || stats.Exporters != 300 || stats.ProcessorInstances != 15 {
 		t.Errorf("stats %+v", stats)
 	}
 	table := cfg["connectors"].(map[string]any)["routing/logs"].(map[string]any)["table"].([]any)
