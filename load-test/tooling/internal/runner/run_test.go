@@ -24,9 +24,14 @@ func TestNewRecordInputs(t *testing.T) {
 	if rec.Setup.PhasesS != (result.Phases{Warmup: 60, Steady: 180, Cooldown: 60}) {
 		t.Errorf("phases %+v", rec.Setup.PhasesS)
 	}
-	// load A, 5 tenants: traces 12000/5 = 2400/s per tenant, 500 per worker
-	if rec.Setup.Generator.WorkersPerTenant["traces"] != 5 || rec.Setup.Generator.LogBodyBytes != 2000 {
-		t.Errorf("generator %+v", rec.Setup.Generator)
+	for _, sig := range spec.Signals {
+		want := manifests.Workers(s.TenantRate(sig))
+		if got := rec.Setup.Generator.WorkersPerTenant[sig.Name]; got != want {
+			t.Errorf("generator workers[%s]: got %d, want %d", sig.Name, got, want)
+		}
+		if sig.BodyBytes > 0 && rec.Setup.Generator.LogBodyBytes != sig.BodyBytes {
+			t.Errorf("generator LogBodyBytes: got %d, want %d", rec.Setup.Generator.LogBodyBytes, sig.BodyBytes)
+		}
 	}
 	if rec.Setup.Fault == nil || rec.Setup.Fault.Rules != "503:70" || rec.Setup.Fault.Delays != "503:1000,200:1000" {
 		t.Errorf("fault %+v", rec.Setup.Fault)
