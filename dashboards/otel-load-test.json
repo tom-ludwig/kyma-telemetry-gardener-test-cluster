@@ -68,7 +68,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum(rate(otelcol_receiver_accepted_spans${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum(rate(otelcol_receiver_accepted_spans_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -93,7 +93,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum(rate(otelcol_receiver_refused_spans${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum(rate(otelcol_receiver_refused_spans_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -208,7 +208,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "increase(otelcol_exporter_send_failed_metric_points${suffix_total}{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
+                        "expr": "increase(otelcol_exporter_send_failed_metric_points_total{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -327,7 +327,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (receiver)(rate(otelcol_receiver_refused_metric_points${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (receiver)(rate(otelcol_receiver_refused_metric_points_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -442,7 +442,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (processor)(rate(otelcol_processor_accepted_metric_points${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (processor)(rate(otelcol_processor_accepted_metric_points_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -467,7 +467,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (processor)(rate(otelcol_processor_refused_metric_points${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (processor)(rate(otelcol_processor_refused_metric_points_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -492,7 +492,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (processor)(rate(otelcol_processor_dropped_metric_points${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (processor)(rate(otelcol_processor_dropped_metric_points_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -607,7 +607,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum(rate(otelcol_receiver_accepted_log_records${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum(rate(otelcol_receiver_accepted_log_records_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -632,7 +632,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum(rate(otelcol_receiver_refused_log_records${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum(rate(otelcol_receiver_refused_log_records_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -747,7 +747,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "rate(otelcol_exporter_sent_log_records${suffix_total}{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
+                        "expr": "rate(otelcol_exporter_sent_log_records_total{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -862,7 +862,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "increase(otelcol_exporter_enqueue_failed_log_records${suffix_total}{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
+                        "expr": "increase(otelcol_exporter_enqueue_failed_log_records_total{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -981,7 +981,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "increase(otelcol_exporter_send_failed_log_records${suffix_total}{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
+                        "expr": "increase(otelcol_exporter_send_failed_log_records_total{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -1100,7 +1100,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (receiver)(rate(otelcol_receiver_refused_log_records${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (receiver)(rate(otelcol_receiver_refused_log_records_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -1215,7 +1215,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (processor)(rate(otelcol_processor_accepted_log_records${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (processor)(rate(otelcol_processor_accepted_log_records_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -1240,7 +1240,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (processor)(rate(otelcol_processor_refused_log_records${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (processor)(rate(otelcol_processor_refused_log_records_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -1265,7 +1265,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (processor)(rate(otelcol_processor_dropped_log_records${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (processor)(rate(otelcol_processor_dropped_log_records_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -1505,7 +1505,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "rate(otelcol_exporter_sent_spans${suffix_total}{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
+                        "expr": "rate(otelcol_exporter_sent_spans_total{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -1795,7 +1795,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "rate(otelcol_process_cpu_seconds${suffix_total}{job=\"$job\"}[$__rate_interval])",
+                        "expr": "rate(otelcol_process_cpu_seconds_total{job=\"$job\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -1910,7 +1910,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "otelcol_process_memory_rss${suffix_total}{job=\"$job\"}",
+                        "expr": "otelcol_process_memory_rss_total{job=\"$job\"}",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -2075,7 +2075,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "resets(otelcol_process_uptime${suffix_total}{job=\"$job\"}[$__rate_interval])",
+                        "expr": "resets(otelcol_process_uptime_total{job=\"$job\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -2100,7 +2100,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "otelcol_process_uptime${suffix_total}{job=\"$job\"}",
+                        "expr": "otelcol_process_uptime_total{job=\"$job\"}",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -2244,7 +2244,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "rate(otelcol_processor_batch_timeout_trigger_send${suffix_total}{job=\"$job\"}[$__rate_interval])",
+                        "expr": "rate(otelcol_processor_batch_timeout_trigger_send_total{job=\"$job\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -2754,7 +2754,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "increase(otelcol_exporter_enqueue_failed_spans${suffix_total}{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
+                        "expr": "increase(otelcol_exporter_enqueue_failed_spans_total{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -2873,7 +2873,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "increase(otelcol_exporter_send_failed_spans${suffix_total}{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
+                        "expr": "increase(otelcol_exporter_send_failed_spans_total{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -2992,7 +2992,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (receiver)(rate(otelcol_receiver_refused_spans${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (receiver)(rate(otelcol_receiver_refused_spans_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -3107,7 +3107,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (processor)(rate(otelcol_processor_accepted_spans${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (processor)(rate(otelcol_processor_accepted_spans_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -3132,7 +3132,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (processor)(rate(otelcol_processor_refused_spans${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (processor)(rate(otelcol_processor_refused_spans_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -3157,7 +3157,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum by (processor)(rate(otelcol_processor_dropped_spans${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum by (processor)(rate(otelcol_processor_dropped_spans_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -3272,7 +3272,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum(rate(otelcol_receiver_accepted_metric_points${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum(rate(otelcol_receiver_accepted_metric_points_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -3297,7 +3297,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "sum(rate(otelcol_receiver_refused_metric_points${suffix_total}{job=\"$job\"}[$__rate_interval]))",
+                        "expr": "sum(rate(otelcol_receiver_refused_metric_points_total{job=\"$job\"}[$__rate_interval]))",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -3412,7 +3412,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "rate(otelcol_exporter_sent_metric_points${suffix_total}{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
+                        "expr": "rate(otelcol_exporter_sent_metric_points_total{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -3527,7 +3527,7 @@
                       "spec": {
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "increase(otelcol_exporter_enqueue_failed_metric_points${suffix_total}{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
+                        "expr": "increase(otelcol_exporter_enqueue_failed_metric_points_total{job=\"$job\", exporter=~\"$exporter\"}[$__rate_interval])",
                         "format": "time_series",
                         "interval": "$minstep",
                         "intervalFactor": 1,
@@ -4058,48 +4058,14 @@
               "name": "$datasource"
             },
             "spec": {
-              "query": "query_result({__name__=~\"otelcol_process_uptime.*\"})",
+              "query": "query_result(last_over_time({__name__=~\"otelcol_process_uptime.*\"}[$__range]))",
               "refId": "job-Variable-Query"
             }
           },
           "regex": "/.*job=\"([a-zA-Z0-9_\\/-]+)\".*/",
           "regexApplyTo": "value",
           "sort": "alphabeticalAsc",
-          "definition": "query_result({__name__=~\"otelcol_process_uptime.*\"})",
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": true
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "suffix_total",
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "label": "Suffix _total",
-          "hide": "hideVariable",
-          "refresh": "onDashboardLoad",
-          "skipUrlSync": false,
-          "query": {
-            "kind": "DataQuery",
-            "group": "prometheus",
-            "version": "v0",
-            "datasource": {
-              "name": "$datasource"
-            },
-            "spec": {
-              "query": "query_result({__name__=~\"otelcol_process_uptime.+\",job=\"$job\"})",
-              "refId": "suffix_total-Variable-Query"
-            }
-          },
-          "regex": "/(_total_total|_total)(?={)/",
-          "regexApplyTo": "value",
-          "sort": "disabled",
-          "definition": "query_result({__name__=~\"otelcol_process_uptime.+\",job=\"$job\"})",
+          "definition": "query_result(last_over_time({__name__=~\"otelcol_process_uptime.*\"}[$__range]))",
           "options": [],
           "multi": false,
           "includeAll": false,
