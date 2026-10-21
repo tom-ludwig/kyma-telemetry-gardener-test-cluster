@@ -21,18 +21,20 @@ spec:
           image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/loadtest:main
           imagePullPolicy: Always
           args:
-            - -matrix
-            # single run instead, e.g.:
-            # - -shape=F1
-            # - -tenants=20
-            # - -load=B
-            # - -rate=500
+            - -shape=F1
+            - -tenants=100
+            - -load=A
+            # - -rate=50
+            - -warmup=2m
+            - -steady=10m
+            - -cooldown=2m
+            - -skip-preflight
           resources:
             requests:
               cpu: 50m
               memory: 64Mi
             limits:
-              memory: 256Mi
+              memory: 556Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
