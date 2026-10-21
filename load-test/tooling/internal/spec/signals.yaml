@@ -2,30 +2,30 @@
 # and the load A total rate. Unknown keys fail at start.
 signals:
   - name: traces
-    item: spans                      # otelcol_*_<item>_total
-    backend: vtsingle                # VM operator app name, Service vtsingle-load-test
+    item: spans # otelcol_*_<item>_total
+    backend: vtsingle # VM operator app name, Service vtsingle-load-test
     port: 10428
     path: /insert/opentelemetry/v1/traces
-    endpointKey: traces_endpoint     # otlp_http exporter field
-    filterKey: trace_conditions      # filter processor field
-    header: VT-Extra-Fields          # per-pipeline attribution
+    endpointKey: traces_endpoint # otlp_http exporter field
+    filterKey: trace_conditions # filter processor field
+    header: VT-Extra-Fields # per-pipeline attribution
     ingestMetric: vt_rows_ingested_total
-    ingestFilter: type!="internalinsert_index"   # VictoriaTraces also counts one trace-id index row per trace
+    ingestFilter: type!="internalinsert_index" # VictoriaTraces also counts one trace-id index row per trace
     freeDiskMetric: vt_free_disk_space_bytes
-    totalRate: 12000
-    storedBytes: 75                  # bytes on disk per item, for the preflight disk estimate (measured ~71 per span, index rows included)
+    totalRate: 10000
+    storedBytes: 75 # bytes on disk per item, for the preflight disk estimate (measured ~71 per span, index rows included)
   - name: metrics
     item: metric_points
     backend: vmsingle
-    port: 8429                       # vmsingle container port; 8428 exists only as a Service alias
+    port: 8429 # vmsingle container port; 8428 exists only as a Service alias
     path: /opentelemetry/v1/metrics
     endpointKey: metrics_endpoint
     filterKey: metric_conditions
-    header: ""                       # VictoriaMetrics: ?extra_label=pipeline=<id> instead
+    header: "" # VictoriaMetrics: ?extra_label=pipeline=<id> instead
     ingestMetric: vm_rows_inserted_total
     freeDiskMetric: vm_free_disk_space_bytes
-    totalRate: 6000
-    storedBytes: 5                   # measured ~5 per sample
+    totalRate: 9000
+    storedBytes: 5 # measured ~5 per sample
   - name: logs
     item: log_records
     backend: vlsingle
@@ -36,6 +36,7 @@ signals:
     header: VL-Extra-Fields
     ingestMetric: vl_rows_ingested_total
     freeDiskMetric: vl_free_disk_space_bytes
-    totalRate: 8000
-    bodyBytes: 2000                  # log body size
-    storedBytes: 8                   # measured ~6 per record; the 2 000 × "x" body compresses to almost nothing
+    totalRate: 6000
+    bodyBytes: 2000 # log body size
+    storedBytes: 8 # measured ~6 per record; the 2 000 × "x" body compresses to almost nothing
+
