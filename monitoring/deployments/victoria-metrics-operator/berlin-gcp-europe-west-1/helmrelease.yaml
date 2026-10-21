@@ -46,7 +46,7 @@ spec:
         enabled: true
 
     operator:
-      disable_prometheus_converter: false
+      disable_prometheus_converter: true
       enable_converter_ownership: true
 
     serviceMonitor:
