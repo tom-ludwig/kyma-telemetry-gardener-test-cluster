@@ -86,15 +86,17 @@ func TestExporterEndpoints(t *testing.T) {
 	cfg, _ := parseConfig(t, spec.RunSpec{Shape: spec.ShapeF1, Tenants: 2, Load: spec.LoadA})
 	exporters := cfg["exporters"].(map[string]any)
 	logs := exporters["otlp_http/logs-p-001"].(map[string]any)
-	if logs["logs_endpoint"] != "http://logs-p-001.load-test-backends.svc:9428/insert/opentelemetry/v1/logs" {
-		t.Errorf("logs endpoint %v", logs["logs_endpoint"])
+	// Every exporter points at its per-pipeline Service, backed by the nop debug collector on
+	// the OTLP/HTTP port. The exporter appends /v1/<signal> itself, so only the base is set.
+	if logs["endpoint"] != "http://logs-p-001.load-test-backends.svc:4318" {
+		t.Errorf("logs endpoint %v", logs["endpoint"])
 	}
-	if logs["headers"].(map[string]any)["VL-Extra-Fields"] != "pipeline=p-001" {
-		t.Errorf("logs headers %v", logs["headers"])
+	if logs["compression"] != "gzip" {
+		t.Errorf("logs compression %v, want gzip", logs["compression"])
 	}
 	metrics := exporters["otlp_http/metrics-p-000"].(map[string]any)
-	if !strings.HasSuffix(metrics["metrics_endpoint"].(string), "?extra_label=pipeline=p-000") {
-		t.Errorf("metrics endpoint %v", metrics["metrics_endpoint"])
+	if metrics["endpoint"] != "http://metrics-p-000.load-test-backends.svc:4318" {
+		t.Errorf("metrics endpoint %v", metrics["endpoint"])
 	}
 	if q := logs["sending_queue"].(map[string]any)["queue_size"]; q != float64(128) {
 		t.Errorf("queue size %v, want 128", q)
