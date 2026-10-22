@@ -8,7 +8,7 @@ spec:
   removePvcAfterDelete: true
 
   nodeSelector:
-    load-test/role: load
+    load-test/role: backend
 
   resources:
     requests:

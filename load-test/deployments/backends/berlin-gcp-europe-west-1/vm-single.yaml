@@ -12,7 +12,7 @@ spec:
   replicaCount: 1
 
   nodeSelector:
-    load-test/role: load
+    load-test/role: backend
 
   resources:
     requests:
