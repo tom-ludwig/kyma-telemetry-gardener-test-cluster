@@ -1,0 +1,49 @@
+{"msg":"loadtest result","result":{"run":{"id":"f1-A-t050-healthy-r1","args":["-shape=F1","-tenants=50","-load=A","-warmup=2m","-ste
+ady=10m","-cooldown=2m","-skip-preflight"],"tool_commit":"a29eddb127e92e07664ab8ec49da4b3273e38e64","date":"2026-10-21T14:31:11.5870
+824Z","collector_image":"otel/opentelemetry-collector-contrib:0.161.0","start":"2026-10-21T14:31:11.586766626Z","steady_start":"2026
+-10-21T14:33:11.586766626Z","steady_end":"2026-10-21T14:43:11.586766626Z","end":"2026-10-21T14:45:11.870342387Z"},"setup":{"shape":"
+F1","load":"A","tenants":50,"health":"healthy","rate_per_tenant":{"logs":120,"metrics":180,"traces":200},"offered_per_s":{"logs":600
+0,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":5,"phases_s":{"warmup":120,"steady"
+:600,"cooldown":120},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_p
+er_tenant":{"logs":1,"metrics":1,"traces":1},"log_body_bytes":2000}},"env":{"collector_node":{"name":"shoot--berlin--tom-evaluation-
+worker-otelcol-z1-d5556-rx98x","machine_type":"n1-standard-4","cpu":3.92,"memory_gib":13.537391662597656},"load_nodes":[{"name":"sho
+ot--berlin--tom-evaluation-worker-load-z1-8d4b7-fsfbz","machine_type":"n2-highcpu-8","cpu":7.92,"memory_gib":6.657176971435547}]},"c
+onfig":{"bytes":103889,"service_pipelines":150,"processor_instances":450,"exporters":150,"startup_s":10},"signals":{"logs":{"receive
+d_per_s":5961.666666666667,"exported_per_s":5933.226666666664,"exported_healthy_per_s":5933.226666666664,"per_pipeline_min_max":[118
+.61333333333333,119.46666666666667],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.2,"backend_ingest_per_s":5973.
+333333333333,"backend_ingest_ratio":1.0067596720839929,"backend_cpu_max":0.09644541666666662},"metrics":{"received_per_s":8843.33333
+3333334,"exported_per_s":8853.333333333332,"exported_healthy_per_s":8853.333333333332,"per_pipeline_min_max":[176.64,177.49333333333
+334],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.2,"backend_ingest_per_s":8833.706666666667,"backend_ingest_ra
+tio":0.9977831325301206,"backend_cpu_max":0.04570218333333334},"traces":{"received_per_s":10000,"exported_per_s":10026.666666666668,
+"exported_healthy_per_s":10026.666666666668,"per_pipeline_min_max":[200.53333333333333,200.53333333333333],"refused":0,"enqueue_fail
+ed":0,"send_failed":0,"queue_util_max":0,"backend_ingest_per_s":10026.666666666666,"backend_ingest_ratio":0.9999999999999998,"backen
+d_cpu_max":0.4276412833333334}},"collector":{"rss_max_mib":675.5,"working_set_max_mib":703.5,"cpu_avg":1.6199224833333332,"cpu_p95":
+1.8201049458333332,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":5.095369522},
+"limit":{"first":null,"all":[],"hard":false},"valid":true}}
+2026/10/21 14:45:17 f1-A-t050-healthy-r1: done, valid=true, first limit <nil>
+
+
+---
+{"msg":"loadtest result","result":{"run":{"id":"f1-A-t100-healthy-r1","args":["-shape=F1","-tenants=100","-load=A","-warmup=2m","-st
+eady=10m","-cooldown=2m","-skip-preflight"],"tool_commit":"a29eddb127e92e07664ab8ec49da4b3273e38e64","date":"2026-10-21T14:51:44.342
+161496Z","collector_image":"otel/opentelemetry-collector-contrib:0.161.0","start":"2026-10-21T14:51:44.341898688Z","steady_start":"2
+026-10-21T14:53:44.341898688Z","steady_end":"2026-10-21T15:03:44.341898688Z","end":"2026-10-21T15:05:44.68309849Z"},"setup":{"shape"
+:"F1","load":"A","tenants":100,"health":"healthy","rate_per_tenant":{"logs":60,"metrics":90,"traces":100},"offered_per_s":{"logs":60
+00,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":2,"phases_s":{"warmup":120,"steady
+":600,"cooldown":120},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_
+per_tenant":{"logs":1,"metrics":1,"traces":1},"log_body_bytes":2000}},"env":{"collector_node":{"name":"shoot--berlin--tom-evaluation
+-worker-otelcol-z1-d5556-rx98x","machine_type":"n1-standard-4","cpu":3.92,"memory_gib":13.537391662597656},"load_nodes":[{"name":"sh
+oot--berlin--tom-evaluation-worker-load-z1-8d4b7-fsfbz","machine_type":"n2-highcpu-8","cpu":7.92,"memory_gib":6.657176971435547}]},"
+config":{"bytes":206789,"service_pipelines":300,"processor_instances":900,"exporters":300,"startup_s":10},"signals":{"logs":{"receiv
+ed_per_s":5525.833333333333,"exported_per_s":5518.8,"exported_healthy_per_s":5518.8,"per_pipeline_min_max":[53.04,56.1],"refused":0,
+"enqueue_failed":0,"send_failed":0,"queue_util_max":0.5,"backend_ingest_per_s":5524.08,"backend_ingest_ratio":1.0009567297238529,"ba
+ckend_cpu_max":0.07385123333333334},"metrics":{"received_per_s":8371.833333333334,"exported_per_s":8352.426666666664,"exported_healt
+hy_per_s":8352.426666666664,"per_pipeline_min_max":[82.77333333333333,84.48],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_u
+til_max":0.5,"backend_ingest_per_s":8374.613333333333,"backend_ingest_ratio":1.0026563138536986,"backend_cpu_max":0.0449708999999999
+94},"traces":{"received_per_s":10006.713333333333,"exported_per_s":10053.119999999999,"exported_healthy_per_s":10053.119999999999,"p
+er_pipeline_min_max":[99.84,100.69333333333333],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.5,"backend_ingest_
+per_s":9984,"backend_ingest_ratio":0.9931245225362874,"backend_cpu_max":0.4912870333333335}},"collector":{"rss_max_mib":1065.984375,
+"working_set_max_mib":1164.1875,"cpu_avg":2.826433978333333,"cpu_p95":3.354386835833331,"restarts":0,"restart_at_s":null,"oom_killed
+":false,"oom_at_s":null,"evicted":false,"queue_drain_s":35.187023697},"limit":{"first":{"id":"H4","signal":"metrics","at_s":120.0001
+01312},"all":[{"id":"H4","signal":"metrics","at_s":120.000101312}],"hard":true},"valid":true}}
+2026/10/21 15:05:57 f1-A-t100-healthy-r1: done, valid=true, first limit &{ID:H4 Signal:metrics AtS:120.000101312}
