@@ -22,7 +22,7 @@ func fakeRunner(limit int) (*Runner, *[]string) {
 
 func TestMatrixRunsEachIDOnce(t *testing.T) {
 	r, ran := fakeRunner(43)
-	if err := r.Matrix(context.Background(), 1000, ""); err != nil {
+	if err := r.Matrix(context.Background(), spec.TargetOTel, 1000, ""); err != nil {
 		t.Fatal(err)
 	}
 	seen := map[string]bool{}
@@ -40,8 +40,8 @@ func TestMatrixRunsEachIDOnce(t *testing.T) {
 		t.Errorf("faulty runs: %d, want 6", faulty)
 	}
 	for _, id := range []string{
-		"f1-A-t005-healthy-r2", "f1-A-t005-healthy-r3", "r1-A-t005-healthy-r3",
-		"f1-A-t043-healthy-r2", "f1-B1000-t043-healthy-r3", "r1-B1000-t043-healthy-r2",
+		"otel-f1-A-t005-healthy-r2", "otel-f1-A-t005-healthy-r3", "otel-r1-A-t005-healthy-r3",
+		"otel-f1-A-t043-healthy-r2", "otel-f1-B1000-t043-healthy-r3", "otel-r1-B1000-t043-healthy-r2",
 	} {
 		if !seen[id] {
 			t.Errorf("missing repetition %s", id)
@@ -59,7 +59,7 @@ func TestMatrixRunsEachIDOnce(t *testing.T) {
 // Every faulty run needs its healthy baseline before it, for S5.
 func TestMatrixHealthyBeforeFaulty(t *testing.T) {
 	r, ran := fakeRunner(1000)
-	if err := r.Matrix(context.Background(), 1000, ""); err != nil {
+	if err := r.Matrix(context.Background(), spec.TargetOTel, 1000, ""); err != nil {
 		t.Fatal(err)
 	}
 	pos := map[string]int{}
@@ -79,12 +79,12 @@ func TestMatrixHealthyBeforeFaulty(t *testing.T) {
 
 func TestMatrixOnlyFilter(t *testing.T) {
 	r, ran := fakeRunner(1000)
-	if err := r.Matrix(context.Background(), 1000, "r1-A-*"); err != nil {
+	if err := r.Matrix(context.Background(), spec.TargetOTel, 1000, "otel-r1-A-*"); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range *ran {
-		if !strings.HasPrefix(id, "r1-A-") {
-			t.Errorf("-only r1-A-* ran %s", id)
+		if !strings.HasPrefix(id, "otel-r1-A-") {
+			t.Errorf("-only otel-r1-A-* ran %s", id)
 		}
 	}
 }

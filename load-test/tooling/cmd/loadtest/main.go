@@ -24,14 +24,15 @@ import (
 
 func main() {
 	var s spec.RunSpec
-	flag.StringVar(&s.Shape, "shape", spec.ShapeF1, "F1 (fan-out) or R1 (routing)")
+	flag.StringVar(&s.Target, "target", spec.TargetOTel, "otel (plain collector we build) or tm (Telemetry Manager gateway via pipeline CRs)")
+	flag.StringVar(&s.Shape, "shape", spec.ShapeF1, "F1 (fan-out) or R1 (routing); tm supports F1 only")
 	flag.IntVar(&s.Tenants, "tenants", 1, "tenants; each has one traces, metrics and logs pipeline")
 	flag.StringVar(&s.Load, "load", spec.LoadA, "A (fixed total split across tenants) or B (-rate per tenant)")
 	flag.StringVar(&s.Health, "health", spec.Healthy, "healthy or faulty (p-000 of each signal goes to the fault backend)")
 	flag.IntVar(&s.Rep, "rep", 1, "repetition number, part of the run ID")
 	flag.IntVar(&s.Rate, "rate", 1000, "load B: items/s per signal per tenant")
 	matrix := flag.Bool("matrix", false, "run the whole matrix (binary search, faulty runs, repetitions)")
-	only := flag.String("only", "", "matrix: only run IDs matching this glob, e.g. 'f1-A-*'")
+	only := flag.String("only", "", "matrix: only run IDs matching this glob, e.g. 'otel-f1-A-*'")
 	vmURL := flag.String("vm-url", "http://vmsingle-vm-single.monitoring.svc:8428", "self-monitoring vm-single")
 	warmup := flag.Duration("warmup", 5*time.Minute, "warm-up, not measured")
 	steady := flag.Duration("steady", 20*time.Minute, "measured steady state")
@@ -61,7 +62,7 @@ func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldo
 		return err
 	}
 	if matrix {
-		return r.Matrix(ctx, s.Rate, only)
+		return r.Matrix(ctx, s.Target, s.Rate, only)
 	}
 	if err := s.Validate(); err != nil {
 		return err

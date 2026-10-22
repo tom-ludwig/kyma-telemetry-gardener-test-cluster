@@ -20,37 +20,44 @@ var (
 
 // Matrix runs the binary search per shape × load, then the fixed faulty runs and the repetitions.
 // A stopped matrix starts from the beginning; use -only to skip finished runs.
-func (r *Runner) Matrix(ctx context.Context, rate int, only string) error {
-	log.Printf("matrix: search per shape × load (1, then %d tenants, then halve), faulty at %v tenants, %d reps at %d tenants and at each limit",
-		spec.MaxTenants, faultyTenants, reps, repTenants)
+// target tm supports F1 and healthy only, so its routing search and the faulty block are skipped.
+func (r *Runner) Matrix(ctx context.Context, target string, rate int, only string) error {
+	matrixShapes := shapes
+	if target == spec.TargetTM {
+		matrixShapes = []string{spec.ShapeF1}
+	}
+	log.Printf("matrix: target %s, search per shape × load (1, then %d tenants, then halve), faulty at %v tenants, %d reps at %d tenants and at each limit",
+		target, spec.MaxTenants, faultyTenants, reps, repTenants)
 	var repeat []spec.RunSpec // healthy specs to repeat: smallest failing run per search, then 5 tenants
-	for _, shape := range shapes {
+	for _, shape := range matrixShapes {
 		for _, load := range loads {
-			failing, err := r.search(ctx, shape, load, rate, only)
+			failing, err := r.search(ctx, target, shape, load, rate, only)
 			if err != nil {
 				return err
 			}
 			if failing > 0 {
-				repeat = append(repeat, spec.RunSpec{Shape: shape, Tenants: failing, Load: load, Health: spec.Healthy, Rate: rate})
+				repeat = append(repeat, spec.RunSpec{Target: target, Shape: shape, Tenants: failing, Load: load, Health: spec.Healthy, Rate: rate})
 			}
 		}
 	}
-	for _, shape := range shapes {
-		for _, n := range faultyTenants {
-			faulty := spec.RunSpec{Shape: shape, Tenants: n, Load: spec.LoadA, Health: spec.Faulty, Rep: 1, Rate: rate}
-			healthy := faulty
-			healthy.Health = spec.Healthy
-			// S5 compares with the healthy run; reused if the search already ran it
-			if _, err := r.runOrSkip(ctx, healthy, only); err != nil {
-				return err
-			}
-			if _, err := r.runOrSkip(ctx, faulty, only); err != nil {
-				return err
+	if target == spec.TargetOTel {
+		for _, shape := range matrixShapes {
+			for _, n := range faultyTenants {
+				faulty := spec.RunSpec{Target: target, Shape: shape, Tenants: n, Load: spec.LoadA, Health: spec.Faulty, Rep: 1, Rate: rate}
+				healthy := faulty
+				healthy.Health = spec.Healthy
+				// S5 compares with the healthy run; reused if the search already ran it
+				if _, err := r.runOrSkip(ctx, healthy, only); err != nil {
+					return err
+				}
+				if _, err := r.runOrSkip(ctx, faulty, only); err != nil {
+					return err
+				}
 			}
 		}
 	}
-	for _, shape := range shapes {
-		repeat = append(repeat, spec.RunSpec{Shape: shape, Tenants: repTenants, Load: spec.LoadA, Health: spec.Healthy, Rate: rate})
+	for _, shape := range matrixShapes {
+		repeat = append(repeat, spec.RunSpec{Target: target, Shape: shape, Tenants: repTenants, Load: spec.LoadA, Health: spec.Healthy, Rate: rate})
 	}
 	for _, s := range repeat {
 		for rep := 1; rep <= reps; rep++ {
@@ -64,14 +71,14 @@ func (r *Runner) Matrix(ctx context.Context, rate int, only string) error {
 }
 
 // search returns the smallest tenant count with a hard limit, or 0 if all passed.
-func (r *Runner) search(ctx context.Context, shape, load string, rate int, only string) (int, error) {
+func (r *Runner) search(ctx context.Context, target, shape, load string, rate int, only string) (int, error) {
 	passed := map[int]bool{}
 	for {
 		n, done := spec.NextSearch(passed)
 		if done {
 			return spec.SmallestFailing(passed), nil
 		}
-		rec, err := r.runOrSkip(ctx, spec.RunSpec{Shape: shape, Tenants: n, Load: load, Health: spec.Healthy, Rep: 1, Rate: rate}, only)
+		rec, err := r.runOrSkip(ctx, spec.RunSpec{Target: target, Shape: shape, Tenants: n, Load: load, Health: spec.Healthy, Rep: 1, Rate: rate}, only)
 		if err != nil {
 			return 0, err
 		}
@@ -79,7 +86,7 @@ func (r *Runner) search(ctx context.Context, shape, load string, rate int, only 
 			return spec.SmallestFailing(passed), nil // filtered out by -only: this search stops here
 		}
 		passed[n] = !rec.Limit.Hard
-		log.Printf("search %s-%s: %d tenants %s", shape, load, n, map[bool]string{true: "passed", false: "hit a hard limit"}[passed[n]])
+		log.Printf("search %s-%s-%s: %d tenants %s", target, shape, load, n, map[bool]string{true: "passed", false: "hit a hard limit"}[passed[n]])
 	}
 }
 
