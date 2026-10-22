@@ -19,9 +19,33 @@ const (
 	// VMPodScrape copies the pod label loadtest.kyma-project.io/run under this sanitized name.
 	RunPromLabel = "loadtest_kyma_project_io_run"
 	collectorSel = `namespace="otel-load-test",container="otelcol"`
-	step         = 15 * time.Second
-	hold         = 5 * time.Minute
+	// tmCollectorSel selects the managed TM gateway pods; they carry no per-run label, so runs
+	// are attributed by the measurement Window alone (runs are serial).
+	tmCollectorSel = `namespace="kyma-system",pod=~"telemetry-otlp-gateway-.*"`
+	// tmContainerSel narrows the gateway's cadvisor series to the collector container; the pod
+	// also runs an istio-proxy sidecar whose memory/CPU must not count.
+	// TODO confirm the collector container name on the live gateway pod.
+	tmContainerSel = tmCollectorSel + `,container="collector"`
+	step           = 15 * time.Second
+	hold           = 5 * time.Minute
 )
+
+// collectorSelFor returns the pod-level selector for the collector under test.
+func collectorSelFor(target string) string {
+	if target == spec.TargetTM {
+		return tmCollectorSel
+	}
+	return collectorSel
+}
+
+// containerSelFor returns the container-scoped selector for cadvisor memory/CPU series,
+// excluding sidecars that share the pod.
+func containerSelFor(target string) string {
+	if target == spec.TargetTM {
+		return tmContainerSel
+	}
+	return collectorSel
+}
 
 // ToolCommit is the git commit the tool was built from, set by the image build (-ldflags -X).
 var ToolCommit = "dev"
@@ -51,6 +75,7 @@ type RunInfo struct {
 }
 
 type Setup struct {
+	Target               string         `json:"target"`
 	Shape                string         `json:"shape"`
 	Load                 string         `json:"load"`
 	Tenants              int            `json:"tenants"`
@@ -109,9 +134,6 @@ type SignalResult struct {
 	EnqueueFailed       float64    `json:"enqueue_failed"`
 	SendFailed          float64    `json:"send_failed"`
 	QueueUtilMax        float64    `json:"queue_util_max"`
-	BackendIngestPerS   float64    `json:"backend_ingest_per_s"`
-	BackendIngestRatio  float64    `json:"backend_ingest_ratio"`
-	BackendCPUMax       float64    `json:"backend_cpu_max"`
 }
 
 type CollectorResult struct {
@@ -225,17 +247,21 @@ func (w Window) promRange() string {
 	return fmt.Sprintf("%ds", int(w.SteadyEnd.Sub(w.SteadyStart).Seconds()))
 }
 
-type Selectors struct{ Run, Exp, Healthy, Backend string }
+type Selectors struct{ Run, Exp, Healthy string }
 
 func SelectorsFor(s spec.RunSpec, sig spec.Signal) Selectors {
+	if s.Target == spec.TargetTM {
+		// The managed gateway has no run label and names its own exporters; attribute by the
+		// gateway pod selector and the measurement Window. No faulty split.
+		return Selectors{Run: tmCollectorSel, Exp: tmCollectorSel, Healthy: tmCollectorSel}
+	}
 	run := fmt.Sprintf(`%s=%q`, RunPromLabel, s.ID())
 	exp := fmt.Sprintf(`%s,exporter=~"otlp_http/%s-p-.*"`, run, sig.Name)
 	healthy := exp
 	if s.Health == spec.Faulty {
 		healthy = fmt.Sprintf(`%s,exporter!="otlp_http/%s-p-000"`, exp, sig.Name)
 	}
-	backend := fmt.Sprintf(`namespace=%q,pod=~"%s-load-test-.*"`, manifests.BackendNamespace, sig.Backend)
-	return Selectors{Run: run, Exp: exp, Healthy: healthy, Backend: backend}
+	return Selectors{Run: run, Exp: exp, Healthy: healthy}
 }
 
 // signalResult runs the per-signal queries over the steady Window W.
@@ -249,22 +275,14 @@ func (p Prom) QuerySignal(ctx context.Context, s spec.RunSpec, sig spec.Signal, 
 	if r.ExportedPerS, err = p.Required(ctx, fmt.Sprintf(`sum(rate(otelcol_exporter_sent_%s_total{%s}[%s]))`, t, sel.Exp, W), at); err != nil {
 		return r, err
 	}
-	perPipeline := fmt.Sprintf(`sum by (exporter) (rate(otelcol_exporter_sent_%s_total{%s}[%s]))`, t, sel.Healthy, W)
-	if r.PerPipelineMinMax[0], err = p.Required(ctx, "min("+perPipeline+")", at); err != nil {
-		return r, err
-	}
-	if r.PerPipelineMinMax[1], err = p.Required(ctx, "max("+perPipeline+")", at); err != nil {
-		return r, err
-	}
-	ingest := sel.Backend
-	if sig.IngestFilter != "" {
-		ingest += "," + sig.IngestFilter
-	}
-	if r.BackendIngestPerS, err = p.Required(ctx, fmt.Sprintf(`sum(rate(%s{%s}[%s]))`, sig.IngestMetric, ingest, W), at); err != nil {
-		return r, err
-	}
-	if r.BackendCPUMax, err = p.Required(ctx, fmt.Sprintf(`max_over_time(sum(rate(container_cpu_usage_seconds_total{%s,container!=""}[1m]))[%s:%s])`, sel.Backend, W, step), at); err != nil {
-		return r, err
+	if s.Target == spec.TargetOTel {
+		perPipeline := fmt.Sprintf(`sum by (exporter) (rate(otelcol_exporter_sent_%s_total{%s}[%s]))`, t, sel.Healthy, W)
+		if r.PerPipelineMinMax[0], err = p.Required(ctx, "min("+perPipeline+")", at); err != nil {
+			return r, err
+		}
+		if r.PerPipelineMinMax[1], err = p.Required(ctx, "max("+perPipeline+")", at); err != nil {
+			return r, err
+		}
 	}
 	if r.Refused, err = p.Counter(ctx, fmt.Sprintf(`sum(increase(otelcol_receiver_refused_%s_total{%s}[%s]))`, t, sel.Run, W), at); err != nil {
 		return r, err
@@ -279,32 +297,41 @@ func (p Prom) QuerySignal(ctx context.Context, s spec.RunSpec, sig spec.Signal, 
 		return r, err
 	}
 	r.ExportedHealthyPerS = r.ExportedPerS
+	if s.Target == spec.TargetTM {
+		return r, nil // the gateway names its own exporters; no faulty split applies
+	}
 	if s.Health == spec.Faulty {
-		// the faulty exporter's successful sends land in the fault backend, not in this backend
+		// the faulty exporter's successful sends land in the fault backend, not the debug collector
 		if r.ExportedHealthyPerS, err = p.Required(ctx, fmt.Sprintf(`sum(rate(otelcol_exporter_sent_%s_total{%s}[%s]))`, t, sel.Healthy, W), at); err != nil {
 			return r, err
 		}
 	}
-	r.BackendIngestRatio = r.BackendIngestPerS / max(r.ExportedHealthyPerS, 1)
 	return r, nil
 }
 
 func (p Prom) QueryCollector(ctx context.Context, s spec.RunSpec, w Window) (CollectorResult, error) {
 	run := fmt.Sprintf(`%s=%q`, RunPromLabel, s.ID())
+	cSel := collectorSelFor(s.Target)
+	ctSel := containerSelFor(s.Target)
 	W, at := w.promRange(), w.SteadyEnd
 	const mib = 1 << 20
 	var r CollectorResult
 	var err error
-	if r.RSSMaxMiB, err = p.Required(ctx, fmt.Sprintf(`max(max_over_time(otelcol_process_memory_rss_bytes{%s}[%s])) / %d`, run, W, mib), at); err != nil {
+	// For tm the gateway has no run label; its process RSS is attributed by the gateway selector.
+	rssSel := run
+	if s.Target == spec.TargetTM {
+		rssSel = cSel
+	}
+	if r.RSSMaxMiB, err = p.Required(ctx, fmt.Sprintf(`max(max_over_time(otelcol_process_memory_rss_bytes{%s}[%s])) / %d`, rssSel, W, mib), at); err != nil {
 		return r, err
 	}
-	if r.WorkingSetMaxMiB, err = p.Required(ctx, fmt.Sprintf(`max(max_over_time(container_memory_working_set_bytes{%s}[%s])) / %d`, collectorSel, W, mib), at); err != nil {
+	if r.WorkingSetMaxMiB, err = p.Required(ctx, fmt.Sprintf(`max(max_over_time(container_memory_working_set_bytes{%s}[%s])) / %d`, ctSel, W, mib), at); err != nil {
 		return r, err
 	}
-	if r.CPUAvg, err = p.Required(ctx, fmt.Sprintf(`sum(rate(container_cpu_usage_seconds_total{%s}[%s]))`, collectorSel, W), at); err != nil {
+	if r.CPUAvg, err = p.Required(ctx, fmt.Sprintf(`sum(rate(container_cpu_usage_seconds_total{%s}[%s]))`, ctSel, W), at); err != nil {
 		return r, err
 	}
-	if r.CPUP95, err = p.Required(ctx, fmt.Sprintf(`quantile_over_time(0.95, sum(rate(container_cpu_usage_seconds_total{%s}[1m]))[%s:%s])`, collectorSel, W, step), at); err != nil {
+	if r.CPUP95, err = p.Required(ctx, fmt.Sprintf(`quantile_over_time(0.95, sum(rate(container_cpu_usage_seconds_total{%s}[1m]))[%s:%s])`, ctSel, W, step), at); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -313,13 +340,16 @@ func (p Prom) QueryCollector(ctx context.Context, s spec.RunSpec, w Window) (Col
 // limits evaluates H1–H4 and S1–S4; S5 needs the healthy record and is added by the caller.
 func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Record, nodeACores float64) error {
 	at := func(t time.Time) float64 { return t.Sub(w.Start).Seconds() }
+	cSel := collectorSelFor(s.Target)
 	addCollectorLimits(rec, at(w.End))
 	if rec.Config.StartupS > 60 {
 		rec.Limit.Add(Hit{ID: "H2", AtS: 0})
 	}
-	limitBytes := float64(s.MemoryLimitMi()) * (1 << 20)
-	held := []struct{ id, q string }{
-		{"S3", fmt.Sprintf(`max(container_memory_working_set_bytes{%s}) > %f`, collectorSel, 0.8*limitBytes)},
+	var held []struct{ id, q string }
+	// S3 compares against the collector memory limit we set; the managed TM gateway has none.
+	if s.Target == spec.TargetOTel {
+		limitBytes := float64(s.MemoryLimitMi()) * (1 << 20)
+		held = append(held, struct{ id, q string }{"S3", fmt.Sprintf(`max(container_memory_working_set_bytes{%s}) > %f`, cSel, 0.8*limitBytes)})
 	}
 	for _, sig := range spec.Signals {
 		sel, t := SelectorsFor(s, sig), sig.Item
@@ -328,8 +358,6 @@ func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Rec
 			healthyShare = float64(s.Tenants-1) / float64(s.Tenants)
 		}
 		offered := float64(s.OfferedRate(sig)) * healthyShare
-		// generators deliver ~1 % below plan, so backend loss is judged against what the collector received
-		received := rec.Signals[sig.Name].ReceivedPerS * healthyShare
 		held = append(held,
 			struct{ id, q string }{"H3:" + sig.Name, fmt.Sprintf(`(sum(rate(otelcol_exporter_enqueue_failed_%[1]s_total{%[2]s}[5m])) > 0) or (sum(rate(otelcol_exporter_send_failed_%[1]s_total{%[2]s}[5m])) > 0)`, t, sel.Healthy)},
 			struct{ id, q string }{"S1:" + sig.Name, fmt.Sprintf(`sum(rate(otelcol_receiver_refused_%s_total{%s}[5m])) > 0`, t, sel.Run)},
@@ -337,9 +365,6 @@ func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Rec
 		)
 		if s.Load == spec.LoadA {
 			held = append(held, struct{ id, q string }{"H4:" + sig.Name, fmt.Sprintf(`sum(rate(otelcol_exporter_sent_%s_total{%s}[1m])) < %f`, t, sel.Healthy, 0.95*offered)})
-		}
-		if rec.Signals[sig.Name].BackendIngestPerS < 0.99*received {
-			rec.Limit.Add(Hit{ID: "H3", Signal: sig.Name, AtS: at(w.SteadyEnd)})
 		}
 	}
 	for _, c := range held {

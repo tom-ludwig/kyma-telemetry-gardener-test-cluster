@@ -1,6 +1,7 @@
 package result
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,21 @@ func steps(start time.Time, from, to int) []time.Time {
 		out = append(out, start.Add(time.Duration(i)*step))
 	}
 	return out
+}
+
+func TestSelectorsForTarget(t *testing.T) {
+	sig := spec.Signals[0]
+	otel := SelectorsFor(spec.RunSpec{Target: spec.TargetOTel, Shape: spec.ShapeF1, Tenants: 5, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}, sig)
+	if !strings.Contains(otel.Run, RunPromLabel) {
+		t.Errorf("otel Run selector lacks run label: %q", otel.Run)
+	}
+	tm := SelectorsFor(spec.RunSpec{Target: spec.TargetTM, Shape: spec.ShapeF1, Tenants: 5, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}, sig)
+	if strings.Contains(tm.Run, RunPromLabel) {
+		t.Errorf("tm Run selector must not carry a run label: %q", tm.Run)
+	}
+	if tm.Run != tmCollectorSel || tm.Exp != tmCollectorSel || tm.Healthy != tmCollectorSel {
+		t.Errorf("tm selectors must all be the gateway selector: %+v", tm)
+	}
 }
 
 func TestFirstHeld(t *testing.T) {
