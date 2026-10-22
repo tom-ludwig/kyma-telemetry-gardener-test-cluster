@@ -4,8 +4,9 @@ import "testing"
 
 func TestRunID(t *testing.T) {
 	cases := map[string]RunSpec{
-		"f1-A-t050-healthy-r1":    {Shape: ShapeF1, Tenants: 50, Load: LoadA, Health: Healthy, Rep: 1, Rate: 1000},
-		"r1-B1000-t005-faulty-r3": {Shape: ShapeR1, Tenants: 5, Load: LoadB, Health: Faulty, Rep: 3, Rate: 1000},
+		"otel-f1-A-t050-healthy-r1":    {Target: TargetOTel, Shape: ShapeF1, Tenants: 50, Load: LoadA, Health: Healthy, Rep: 1, Rate: 1000},
+		"otel-r1-B1000-t005-faulty-r3": {Target: TargetOTel, Shape: ShapeR1, Tenants: 5, Load: LoadB, Health: Faulty, Rep: 3, Rate: 1000},
+		"tm-f1-A-t050-healthy-r1":      {Target: TargetTM, Shape: ShapeF1, Tenants: 50, Load: LoadA, Health: Healthy, Rep: 1, Rate: 1000},
 	}
 	for want, s := range cases {
 		if got := s.ID(); got != want {
@@ -60,6 +61,23 @@ func TestSearch(t *testing.T) {
 	runs, failing = simulate(1)
 	if len(runs) != 1 || failing != 1 {
 		t.Errorf("limit at 1: runs %v, failing %d", runs, failing)
+	}
+}
+
+func TestValidate(t *testing.T) {
+	base := RunSpec{Target: TargetTM, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1}
+	if err := base.Validate(); err != nil {
+		t.Errorf("valid tm run rejected: %v", err)
+	}
+	reject := map[string]RunSpec{
+		"bad target": {Target: "x", Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
+		"tm+R1":      {Target: TargetTM, Shape: ShapeR1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
+		"tm+faulty":  {Target: TargetTM, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Faulty, Rep: 1},
+	}
+	for name, s := range reject {
+		if err := s.Validate(); err == nil {
+			t.Errorf("%s: want error, got nil", name)
+		}
 	}
 }
 

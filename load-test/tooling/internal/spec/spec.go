@@ -18,8 +18,21 @@ const (
 	Healthy = "healthy"
 	Faulty  = "faulty"
 
+	// TargetOTel tests a plain OTel collector we build ourselves; TargetTM tests the managed
+	// Telemetry Manager gateway via LogPipeline/MetricPipeline/TracePipeline CRs we deploy.
+	TargetOTel = "otel"
+	TargetTM   = "tm"
+
 	MaxTenants = 100
 	SearchGap  = 5
+
+	// TM gateway: one shared OTLP DaemonSet in kyma-system for all signals.
+	// (The per-signal runtime/prometheus scraping DaemonSets are disabled in these tests.)
+	TMNamespace       = "kyma-system"
+	TMGatewayEndpoint = "telemetry-otlp.kyma-system.svc:4317"
+	TMGatewayApp      = "telemetry-otlp-gateway" // app.kubernetes.io/name of the shared OTLP gateway
+	// TMBackendNamespace holds the per-run nop debug backend TM pipelines export to.
+	TMBackendNamespace = "tm-pipeline-test"
 )
 
 //go:embed signals.yaml
@@ -27,20 +40,11 @@ var signalsYAML []byte
 
 // Signal holds everything that differs between traces, metrics and logs (signals.yaml).
 type Signal struct {
-	Name           string `json:"name"`
-	Item           string `json:"item"`
-	Backend        string `json:"backend"`
-	Port           int    `json:"port"`
-	Path           string `json:"path"`
-	EndpointKey    string `json:"endpointKey"`
-	FilterKey      string `json:"filterKey"`
-	Header         string `json:"header"`
-	IngestMetric   string `json:"ingestMetric"`
-	IngestFilter   string `json:"ingestFilter"`
-	FreeDiskMetric string `json:"freeDiskMetric"`
-	TotalRate      int    `json:"totalRate"`
-	BodyBytes      int    `json:"bodyBytes"`
-	StoredBytes    int    `json:"storedBytes"`
+	Name      string `json:"name"`
+	Item      string `json:"item"`
+	FilterKey string `json:"filterKey"`
+	TotalRate int    `json:"totalRate"`
+	BodyBytes int    `json:"bodyBytes"`
 }
 
 // Signals is parsed once from the embedded file; a broken file is a build mistake, so it panics.
@@ -65,8 +69,8 @@ func loadSignals(raw []byte) ([]Signal, error) {
 		return nil, fmt.Errorf("no signals")
 	}
 	for _, s := range file.Signals {
-		if s.Name == "" || s.Backend == "" || s.Port <= 0 || s.TotalRate <= 0 || s.StoredBytes <= 0 {
-			return nil, fmt.Errorf("signal %q: name, backend, port, totalRate and storedBytes are required", s.Name)
+		if s.Name == "" || s.Item == "" || s.FilterKey == "" || s.TotalRate <= 0 {
+			return nil, fmt.Errorf("signal %q: name, item, filterKey and totalRate are required", s.Name)
 		}
 	}
 	return file.Signals, nil
@@ -74,6 +78,7 @@ func loadSignals(raw []byte) ([]Signal, error) {
 
 // RunSpec is one test run: all three signals with Tenants pipelines each.
 type RunSpec struct {
+	Target  string // otel (plain collector) or tm (Telemetry Manager gateway)
 	Shape   string
 	Tenants int
 	Load    string
@@ -82,19 +87,25 @@ type RunSpec struct {
 	Rate    int // load B only: items/s per signal per tenant
 }
 
-// ID is the run's name, e.g. f1-A-t050-healthy-r1 or f1-B1000-t050-healthy-r1.
+// ID is the run's name, e.g. otel-f1-A-t050-healthy-r1 or tm-f1-B1000-t050-healthy-r1.
 func (s RunSpec) ID() string {
 	load := s.Load
 	if s.Load == LoadB {
 		load = fmt.Sprintf("B%d", s.Rate)
 	}
-	return fmt.Sprintf("%s-%s-t%03d-%s-r%d", strings.ToLower(s.Shape), load, s.Tenants, s.Health, s.Rep)
+	return fmt.Sprintf("%s-%s-%s-t%03d-%s-r%d", s.Target, strings.ToLower(s.Shape), load, s.Tenants, s.Health, s.Rep)
 }
 
 func (s RunSpec) Validate() error {
 	switch {
+	case s.Target != TargetOTel && s.Target != TargetTM:
+		return fmt.Errorf("-target must be otel or tm, got %q", s.Target)
 	case s.Shape != ShapeF1 && s.Shape != ShapeR1:
 		return fmt.Errorf("-shape must be F1 or R1, got %q", s.Shape)
+	case s.Target == TargetTM && s.Shape != ShapeF1:
+		return fmt.Errorf("-target tm supports only -shape F1 (Telemetry Manager has no routing), got %q", s.Shape)
+	case s.Target == TargetTM && s.Health != Healthy:
+		return fmt.Errorf("-target tm supports only -health healthy (no fault backend), got %q", s.Health)
 	case s.Load != LoadA && s.Load != LoadB:
 		return fmt.Errorf("-load must be A or B, got %q", s.Load)
 	case s.Health != Healthy && s.Health != Faulty:
