@@ -5,6 +5,7 @@ import (
 
 	_ "embed"
 	"fmt"
+	"maps"
 	"slices"
 
 	"sigs.k8s.io/yaml"
@@ -16,11 +17,17 @@ var baseConfigYAML []byte
 const (
 	BackendNamespace  = "load-test-backends"
 	maxConfigMapBytes = 1 << 20
+	// The API server counts data keys and values against 1 MiB; the margin covers the key.
+	partBudget = maxConfigMapBytes - 4<<10
 )
+
+// splitSections are the generated maps whose entries are packed into the parts after the base.
+var splitSections = []string{"processors", "connectors", "exporters", "pipelines"}
 
 // ConfigStats goes into the result record.
 type ConfigStats struct {
 	Bytes              int `json:"bytes"`
+	ConfigMaps         int `json:"config_maps"`
 	ServicePipelines   int `json:"service_pipelines"`
 	ProcessorInstances int `json:"processor_instances"`
 	Exporters          int `json:"exporters"`
@@ -33,7 +40,8 @@ type collectorConfig struct {
 
 // BuildConfig returns the collector config for a run: the TM gateway base plus
 // N pipelines per signal, shaped as F1 (fan-out + filter) or R1 (routing connector).
-func BuildConfig(s spec.RunSpec) ([]byte, ConfigStats, error) {
+// The config comes in parts, one per ConfigMap, that the collector merges at startup.
+func BuildConfig(s spec.RunSpec) ([][]byte, ConfigStats, error) {
 	var base map[string]any
 	if err := yaml.Unmarshal(baseConfigYAML, &base); err != nil {
 		return nil, ConfigStats{}, fmt.Errorf("parse base config: %w", err)
@@ -55,27 +63,99 @@ func BuildConfig(s spec.RunSpec) ([]byte, ConfigStats, error) {
 		c.addRouting(s, sig)
 	}
 
-	base["exporters"] = c.exporters
-	if len(c.connectors) > 0 {
-		base["connectors"] = c.connectors
-	}
-	base["service"].(map[string]any)["pipelines"] = c.pipelines
-
-	out, err := yaml.Marshal(base)
+	// The base processors move into the packed parts with the generated ones.
+	delete(base, "processors")
+	parts, err := splitConfig(base, map[string]map[string]any{
+		"processors": c.processors,
+		"connectors": c.connectors,
+		"exporters":  c.exporters,
+		"pipelines":  c.pipelines,
+	}, partBudget)
 	if err != nil {
 		return nil, ConfigStats{}, err
 	}
-	// The API server rejects ConfigMaps above 1 MiB; fail before anything is created.
-	if len(out) > maxConfigMapBytes {
-		return nil, ConfigStats{}, fmt.Errorf("collector config for %d tenants is %d KiB, above the ConfigMap limit of 1 MiB; use fewer tenants",
-			s.Tenants, len(out)/1024)
+	size := 0
+	for _, p := range parts {
+		size += len(p)
 	}
-	return out, ConfigStats{
-		Bytes:              len(out),
+	return parts, ConfigStats{
+		Bytes:              size,
+		ConfigMaps:         len(parts),
 		ServicePipelines:   len(c.pipelines),
 		ProcessorInstances: c.processorInstances,
 		Exporters:          len(c.exporters),
 	}, nil
+}
+
+// splitConfig cuts the config into parts of at most budget bytes: the base without the
+// generated sections, then whole entries of those sections. The collector merges maps
+// but replaces lists, so a cut only between entries keeps every pipeline's lists in one part.
+func splitConfig(base map[string]any, sections map[string]map[string]any, budget int) ([][]byte, error) {
+	head, err := yaml.Marshal(base)
+	if err != nil {
+		return nil, err
+	}
+	parts := [][]byte{head}
+	part, size := configPart{}, 0
+	flush := func() error {
+		if len(part) == 0 {
+			return nil
+		}
+		raw, err := yaml.Marshal(part.doc())
+		if err != nil {
+			return err
+		}
+		parts = append(parts, raw)
+		part, size = configPart{}, 0
+		return nil
+	}
+	for _, name := range splitSections {
+		for _, key := range slices.Sorted(maps.Keys(sections[name])) {
+			entry := configPart{name: {key: sections[name][key]}}
+			raw, err := yaml.Marshal(entry.doc())
+			if err != nil {
+				return nil, err
+			}
+			if len(raw) > budget {
+				return nil, fmt.Errorf("%s %s is %d KiB, above the ConfigMap limit of 1 MiB", name, key, len(raw)/1024)
+			}
+			// The sum of single-entry sizes is an upper bound of the part's size.
+			if size+len(raw) > budget {
+				if err := flush(); err != nil {
+					return nil, err
+				}
+			}
+			part.add(name, key, sections[name][key])
+			size += len(raw)
+		}
+	}
+	if err := flush(); err != nil {
+		return nil, err
+	}
+	return parts, nil
+}
+
+// configPart holds whole entries per section.
+type configPart map[string]map[string]any
+
+func (p configPart) add(section, key string, value any) {
+	if p[section] == nil {
+		p[section] = map[string]any{}
+	}
+	p[section][key] = value
+}
+
+// doc places the sections at their config paths; pipelines live under service.
+func (p configPart) doc() map[string]any {
+	doc := map[string]any{}
+	for name, entries := range p {
+		if name == "pipelines" {
+			doc["service"] = map[string]any{"pipelines": entries}
+			continue
+		}
+		doc[name] = entries
+	}
+	return doc
 }
 
 // enrichment is the TM gateway processing per signal that changes telemetrygen data,
