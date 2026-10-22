@@ -92,3 +92,4 @@ job.yaml                      Job that starts the tool
 ```
 
 RBAC for the Job: `load-test/deployments/tooling/berlin-gcp-europe-west-1/` (`serviceaccount.yaml`, `rbac.yaml`), deployed by Flux.
+The same directory holds `collector-rbac.yaml`, read access for the collector's `k8s_attributes` processor; preflight fails without it.

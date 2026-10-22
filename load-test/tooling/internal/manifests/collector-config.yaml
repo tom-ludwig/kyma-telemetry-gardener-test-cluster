@@ -1,5 +1,8 @@
 # Static part of the collector config, copied from the telemetry-manager OTLP gateway
-# (internal/otelcollector/config/otlpgateway/testdata/all-signals-multi-backend.yaml)
+# (internal/otelcollector/config/otlpgateway/testdata/service-enrichment-otel.yaml).
+# Left out: Kyma-only processors (istio_noise_filter, istio_enrichment) and the transforms
+# that never change telemetrygen data (Istio, unknown service name, OTel annotations, kymastats scope).
+# kyma.* attributes only exist on metrics (kyma.input.name), so drop-kyma-attributes runs for metrics only.
 # The tool adds filter processors, exporters, connectors and pipelines per run.
 extensions:
   cgroup_runtime:
@@ -31,6 +34,81 @@ processors:
     send_batch_size: 512
     timeout: 10s
     send_batch_max_size: 512
+  k8s_attributes:
+    auth_type: serviceAccount
+    passthrough: false
+    # No node filter: TM runs one gateway per node, here the generators run on another node.
+    extract:
+      metadata:
+        - k8s.pod.name
+        - k8s.node.name
+        - k8s.namespace.name
+        - k8s.deployment.name
+        - k8s.statefulset.name
+        - k8s.daemonset.name
+        - k8s.cronjob.name
+        - k8s.job.name
+        - service.namespace
+        - service.name
+        - service.version
+        - service.instance.id
+      labels:
+        - from: node
+          key: topology.kubernetes.io/region
+          tag_name: cloud.region
+        - from: node
+          key: topology.kubernetes.io/zone
+          tag_name: cloud.availability_zone
+        - from: node
+          key: node.kubernetes.io/instance-type
+          tag_name: host.type
+        - from: node
+          key: kubernetes.io/arch
+          tag_name: host.arch
+      otel_annotations: true
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.ip
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+      - sources:
+          - from: connection
+  transform/drop-kyma-attributes:
+    error_mode: ignore
+    metric_statements:
+      - statements:
+          - delete_matching_keys(resource.attributes, "kyma.*")
+  transform/insert-cluster-attributes:
+    error_mode: ignore
+    log_statements:
+      - statements:
+          - set(resource.attributes["k8s.cluster.name"], "${KUBERNETES_SERVICE_HOST}") where resource.attributes["k8s.cluster.name"] == nil or resource.attributes["k8s.cluster.name"] == ""
+          - set(resource.attributes["k8s.cluster.uid"], "") where resource.attributes["k8s.cluster.uid"] == nil or resource.attributes["k8s.cluster.uid"] == ""
+          - set(resource.attributes["cloud.provider"], "gcp") where resource.attributes["cloud.provider"] == nil or resource.attributes["cloud.provider"] == ""
+    metric_statements:
+      - statements:
+          - set(resource.attributes["k8s.cluster.name"], "${KUBERNETES_SERVICE_HOST}") where resource.attributes["k8s.cluster.name"] == nil or resource.attributes["k8s.cluster.name"] == ""
+          - set(resource.attributes["k8s.cluster.uid"], "") where resource.attributes["k8s.cluster.uid"] == nil or resource.attributes["k8s.cluster.uid"] == ""
+          - set(resource.attributes["cloud.provider"], "gcp") where resource.attributes["cloud.provider"] == nil or resource.attributes["cloud.provider"] == ""
+    trace_statements:
+      - statements:
+          - set(resource.attributes["k8s.cluster.name"], "${KUBERNETES_SERVICE_HOST}") where resource.attributes["k8s.cluster.name"] == nil or resource.attributes["k8s.cluster.name"] == ""
+          - set(resource.attributes["k8s.cluster.uid"], "") where resource.attributes["k8s.cluster.uid"] == nil or resource.attributes["k8s.cluster.uid"] == ""
+          - set(resource.attributes["cloud.provider"], "gcp") where resource.attributes["cloud.provider"] == nil or resource.attributes["cloud.provider"] == ""
+  transform/set-kyma-input-name-otlp:
+    error_mode: ignore
+    metric_statements:
+      - statements:
+          - set(resource.attributes["kyma.input.name"], "otlp")
+  transform/set-observed-time-if-zero:
+    error_mode: ignore
+    log_statements:
+      - statements:
+          - set(log.observed_time, Now())
+        conditions:
+          - log.observed_time_unix_nano == 0
 
 service:
   extensions:

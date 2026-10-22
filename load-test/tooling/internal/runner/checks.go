@@ -13,6 +13,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,6 +40,11 @@ func (r *Runner) preflight(ctx context.Context, s spec.RunSpec) (nodes, error) {
 	n, err := r.checkNodes(ctx, s)
 	if err != nil {
 		return n, err
+	}
+	// Without it k8s_attributes only logs "forbidden" and passes data through unenriched.
+	var binding rbacv1.ClusterRoleBinding
+	if err := r.k.Get(ctx, types.NamespacedName{Name: "otelcol"}, &binding); err != nil {
+		return n, fmt.Errorf("ClusterRoleBinding otelcol for k8s_attributes (deployed by Flux): %w", err)
 	}
 	if r.skipPreflight {
 		log.Printf("%s: preflight capacity, backend readiness and disk checks skipped (-skip-preflight)", s.ID())
