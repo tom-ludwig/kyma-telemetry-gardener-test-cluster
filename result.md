@@ -77,11 +77,18 @@ Comparing the two architectures at 50 and 100 tenants demonstrates the massive C
 | **Fan-Out**  | 100     | 300       | 2.83    | 3.35    | 1 066 MiB | ~7–8% dropped ⚠  |
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626, #16a34a"
+---
 xychart-beta
     title "CPU Usage (Avg Cores): Routing vs. Fan-Out"
-    x-axis ["50T (Router)", "50T (Fan-Out)", "100T (Router)", "100T (Fan-Out)"]
+    x-axis ["50T", "100T"]
     y-axis "CPU Cores" 0 --> 3.5
-    bar [0.46, 1.62, 0.49, 2.83]
+    bar "Fan-Out" [1.62, 2.83]
+    bar "Routing" [0.46, 0.49]
 ```
 
 #### 2. Routing Pipeline Scaling (1 to 100 Tenants)
@@ -144,19 +151,35 @@ Activating transformations highlights the stark contrast between architectures: 
 | **Fan-Out** | 100 | 301 | 1 404 | 3.47 | 3.98 | 1 878 MiB | **Severe drop** (41% logs, 47% metrics) ⚠ |
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626, #16a34a"
+---
 xychart-beta
     title "CPU Usage (Avg Cores) with Transforms: Routing vs. Fan-Out"
-    x-axis ["10T (Router)", "10T (Fan-Out)", "20T (Router)", "20T (Fan-Out)", "50T (Router)", "50T (Fan-Out)", "100T (Router)", "100T (Fan-Out)"]
+    x-axis ["1T", "10T", "20T", "50T", "100T"]
     y-axis "CPU Cores" 0 --> 4
-    bar [0.58, 0.92, 0.62, 1.30, 0.58, 2.47, 0.64, 3.47]
+    bar "Fan-Out" [0.56, 0.92, 1.30, 2.47, 3.47]
+    bar "Routing" [0.54, 0.58, 0.62, 0.58, 0.64]
+    
 ```
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626, #16a34a"
+---
 xychart-beta
     title "Memory (RSS Max MiB) with Transforms: Routing vs. Fan-Out"
-    x-axis ["10T (Router)", "10T (Fan-Out)", "20T (Router)", "20T (Fan-Out)", "50T (Router)", "50T (Fan-Out)", "100T (Router)", "100T (Fan-Out)"]
+    x-axis ["1T", "10T", "20T", "50T", "100T"]
     y-axis "RSS Max (MiB)" 200 --> 2000
-    bar [324, 370, 384, 488, 584, 922, 972, 1878]
+    bar "Fan-Out" [279, 370, 488, 922, 1878]
+    bar "Routing" [271, 324, 384, 584, 972]
+
 ```
 
 #### Key Takeaways (Transforms)
