@@ -1,4 +1,4 @@
-# Load Test Results 2 — 2026-10-21
+s# Load Test Results 2 — 2026-10-21
 
 Shape R1, load A (6 000 logs/s, 9 000 metrics/s, 10 000 traces/s total), 10m steady, collector `otel/opentelemetry-collector-contrib:0.161.0`, collector node `n1-standard-4` (3.92 CPU, 13.5 GiB).
 
