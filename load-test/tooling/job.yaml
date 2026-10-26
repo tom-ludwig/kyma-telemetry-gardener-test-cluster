@@ -18,7 +18,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: loadtest
-          image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/loadtest:telemetry-manager
+          image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/loadtest:main
           imagePullPolicy: Always
           args:
             - -target=tm # test managed Telemetry Manager gateway (F1, healthy only); default otel
