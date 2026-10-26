@@ -249,6 +249,7 @@ func (r *Runner) applyTM(ctx context.Context, s spec.RunSpec) error {
 		return err
 	}
 	objs := manifests.DebugBackendObjects(s, spec.TMBackendNamespace)
+	objs = append(objs, manifests.GatewayServiceMonitor())
 	return r.create(ctx, append(objs, pipelines...))
 }
 
@@ -360,7 +361,7 @@ func (r *Runner) waitDrain(ctx context.Context, s spec.RunSpec, loadStop time.Ti
 
 func (r *Runner) create(ctx context.Context, objs []client.Object) error {
 	for _, o := range objs {
-		if err := r.k.Create(ctx, o); err != nil {
+		if err := r.k.Patch(ctx, o, client.Apply, client.ForceOwnership, client.FieldOwner("loadtest")); err != nil {
 			return fmt.Errorf("create %T %s: %w", o, o.GetName(), err)
 		}
 	}

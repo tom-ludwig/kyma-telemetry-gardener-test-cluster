@@ -91,6 +91,7 @@ func DebugBackendObjects(s spec.RunSpec, namespace string) []client.Object {
 		return metav1.ObjectMeta{Name: debugBackend, Namespace: namespace, Labels: labels}
 	}
 	cm := &corev1.ConfigMap{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
 		ObjectMeta: meta(),
 		Data:       map[string]string{"config.yaml": debugBackendConfig},
 	}
@@ -125,6 +126,7 @@ func DebugBackendObjects(s spec.RunSpec, namespace string) []client.Object {
 		},
 	}
 	svc := &corev1.Service{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
 		ObjectMeta: meta(),
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{"app": debugBackend},
@@ -160,6 +162,30 @@ service:
       receivers: [otlp]
       exporters: [nop]
 `
+
+// GatewayServiceMonitor returns a Prometheus ServiceMonitor that scrapes the
+// TM-managed OTLP gateway pods on port 8888.
+func GatewayServiceMonitor() client.Object {
+	u := &unstructured.Unstructured{}
+	u.SetAPIVersion("monitoring.coreos.com/v1")
+	u.SetKind("ServiceMonitor")
+	u.SetName("telemetry-otlp-gateway")
+	u.SetNamespace("kyma-system")
+	u.Object["spec"] = map[string]any{
+		"selector": map[string]any{
+			"matchLabels": map[string]any{
+				"app.kubernetes.io/name": "telemetry-otlp-gateway",
+			},
+		},
+		"endpoints": []any{
+			map[string]any{
+				"port": "http-metrics",
+				"path": "/metrics",
+			},
+		},
+	}
+	return u
+}
 
 func toAnyMap(m map[string]string) map[string]any {
 	out := make(map[string]any, len(m))

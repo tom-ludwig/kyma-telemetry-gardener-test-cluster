@@ -58,6 +58,7 @@ func CollectorObjects(s spec.RunSpec, relayConf []byte) ([]client.Object, error)
 		return nil, err
 	}
 	objs := []client.Object{&corev1.ConfigMap{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
 		ObjectMeta: metav1.ObjectMeta{Name: "otelcol", Namespace: LoadNamespace, Labels: RunLabels(s)},
 		Data:       map[string]string{"relay.conf": string(relayConf)},
 	}}

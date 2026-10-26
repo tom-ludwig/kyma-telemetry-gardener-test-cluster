@@ -316,22 +316,29 @@ func (p Prom) QueryCollector(ctx context.Context, s spec.RunSpec, w Window) (Col
 	W, at := w.promRange(), w.SteadyEnd
 	const mib = 1 << 20
 	var r CollectorResult
-	var err error
 	// For tm the gateway has no run label; its process RSS is attributed by the gateway selector.
 	rssSel := run
 	if s.Target == spec.TargetTM {
 		rssSel = cSel
 	}
-	if r.RSSMaxMiB, err = p.Required(ctx, fmt.Sprintf(`max(max_over_time(otelcol_process_memory_rss_bytes{%s}[%s])) / %d`, rssSel, W, mib), at); err != nil {
+	optional := func(q string) (float64, error) {
+		v, ok, err := p.Value(ctx, q, at)
+		if err != nil || !ok {
+			return -1, err
+		}
+		return v, nil
+	}
+	var err error
+	if r.RSSMaxMiB, err = optional(fmt.Sprintf(`max(max_over_time(otelcol_process_memory_rss_bytes{%s}[%s])) / %d`, rssSel, W, mib)); err != nil {
 		return r, err
 	}
-	if r.WorkingSetMaxMiB, err = p.Required(ctx, fmt.Sprintf(`max(max_over_time(container_memory_working_set_bytes{%s}[%s])) / %d`, ctSel, W, mib), at); err != nil {
+	if r.WorkingSetMaxMiB, err = optional(fmt.Sprintf(`max(max_over_time(container_memory_working_set_bytes{%s}[%s])) / %d`, ctSel, W, mib)); err != nil {
 		return r, err
 	}
-	if r.CPUAvg, err = p.Required(ctx, fmt.Sprintf(`sum(rate(container_cpu_usage_seconds_total{%s}[%s]))`, ctSel, W), at); err != nil {
+	if r.CPUAvg, err = optional(fmt.Sprintf(`sum(rate(container_cpu_usage_seconds_total{%s}[%s]))`, ctSel, W)); err != nil {
 		return r, err
 	}
-	if r.CPUP95, err = p.Required(ctx, fmt.Sprintf(`quantile_over_time(0.95, sum(rate(container_cpu_usage_seconds_total{%s}[1m]))[%s:%s])`, ctSel, W, step), at); err != nil {
+	if r.CPUP95, err = optional(fmt.Sprintf(`quantile_over_time(0.95, sum(rate(container_cpu_usage_seconds_total{%s}[1m]))[%s:%s])`, ctSel, W, step)); err != nil {
 		return r, err
 	}
 	return r, nil
