@@ -12,7 +12,7 @@ rules:
     verbs: [get]
   - apiGroups: [telemetry.kyma-project.io]
     resources: [logpipelines, metricpipelines, tracepipelines]
-    verbs: [get, list, create, delete, deletecollection]
+    verbs: [get, list, create, patch, delete, deletecollection]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -35,13 +35,13 @@ metadata:
 rules:
   - apiGroups: [apps]
     resources: [deployments]
-    verbs: [get, list, create, delete, deletecollection]
+    verbs: [get, list, create, patch, delete, deletecollection]
   - apiGroups: [""]
     resources: [services, configmaps, serviceaccounts]
-    verbs: [get, list, create, delete, deletecollection]
+    verbs: [get, list, create, patch, delete, deletecollection]
   - apiGroups: [operator.victoriametrics.com]
     resources: [vmpodscrapes]
-    verbs: [get, list, create, delete, deletecollection]
+    verbs: [get, list, create, patch, delete, deletecollection]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -65,10 +65,10 @@ metadata:
 rules:
   - apiGroups: [apps]
     resources: [deployments]
-    verbs: [get, list, create, delete, deletecollection]
+    verbs: [get, list, create, patch, delete, deletecollection]
   - apiGroups: [""]
     resources: [services, configmaps, serviceaccounts]
-    verbs: [get, list, create, delete, deletecollection]
+    verbs: [get, list, create, patch, delete, deletecollection]
   - apiGroups: [""]
     resources: [pods]
     verbs: [delete]
@@ -84,19 +84,43 @@ metadata:
 rules:
   - apiGroups: [apps]
     resources: [deployments]
-    verbs: [get, list, create, delete, deletecollection]
+    verbs: [get, list, create, patch, delete, deletecollection]
   - apiGroups: [""]
     resources: [services, configmaps, serviceaccounts]
-    verbs: [get, list, create, delete, deletecollection]
+    verbs: [get, list, create, patch, delete, deletecollection]
   - apiGroups: [operator.victoriametrics.com]
     resources: [vmpodscrapes]
-    verbs: [get, list, create, delete, deletecollection]
+    verbs: [get, list, create, patch, delete, deletecollection]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: loadtest
   namespace: tm-pipeline-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: loadtest
+subjects:
+  - kind: ServiceAccount
+    name: loadtest
+    namespace: otel-load-test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: loadtest
+  namespace: kyma-system
+rules:
+  - apiGroups: [monitoring.coreos.com]
+    resources: [servicemonitors]
+    verbs: [get, list, create, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: loadtest
+  namespace: kyma-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
