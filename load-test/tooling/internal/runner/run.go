@@ -46,11 +46,11 @@ func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration,
 
 // Run executes one run and prints its result record.
 func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error) {
-	var relayConf []byte
+	var configParts [][]byte
 	var stats manifests.ConfigStats
 	if s.Target == spec.TargetOTel {
 		var err error
-		relayConf, stats, err = manifests.BuildConfig(s)
+		configParts, stats, err = manifests.BuildConfig(s)
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +70,7 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 			return nil, err
 		}
 	} else {
-		if err := r.applyCollector(ctx, s, relayConf); err != nil {
+		if err := r.applyCollector(ctx, s, configParts); err != nil {
 			return nil, err
 		}
 		if err := r.waitDebugBackend(ctx, manifests.BackendNamespace); err != nil {
@@ -292,7 +292,7 @@ func conditionTrue(u *unstructured.Unstructured, t string) bool {
 
 // applyCollector deploys the collector under test, its per-pipeline Services, the per-run
 // nop debug backend they export to, and the fault backend for faulty runs.
-func (r *Runner) applyCollector(ctx context.Context, s spec.RunSpec, relayConf []byte) error {
+func (r *Runner) applyCollector(ctx context.Context, s spec.RunSpec, configParts [][]byte) error {
 	svcs, err := manifests.PipelineServices(s)
 	if err != nil {
 		return err
@@ -305,7 +305,7 @@ func (r *Runner) applyCollector(ctx context.Context, s spec.RunSpec, relayConf [
 		}
 		objs = append(objs, fault)
 	}
-	collector, err := manifests.CollectorObjects(s, relayConf)
+	collector, err := manifests.CollectorObjects(s, configParts)
 	if err != nil {
 		return err
 	}

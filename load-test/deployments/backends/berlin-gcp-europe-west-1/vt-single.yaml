@@ -12,7 +12,7 @@ spec:
     listenPort: 4317
 
   nodeSelector:
-    load-test/role: load
+    load-test/role: backend
 
   resources:
     requests:

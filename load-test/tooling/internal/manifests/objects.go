@@ -51,17 +51,20 @@ func readTemplate(path string, obj any) error {
 }
 
 // CollectorObjects returns the static collector manifests with the per-run values set:
-// the generated config, the run label and the TM memory limit.
-func CollectorObjects(s spec.RunSpec, relayConf []byte) ([]client.Object, error) {
+// one ConfigMap per config part, the run label and the TM memory limit.
+func CollectorObjects(s spec.RunSpec, parts [][]byte) ([]client.Object, error) {
 	raw, err := manifestsFS.ReadFile("collector.yaml")
 	if err != nil {
 		return nil, err
 	}
-	objs := []client.Object{&corev1.ConfigMap{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
-		ObjectMeta: metav1.ObjectMeta{Name: "otelcol", Namespace: LoadNamespace, Labels: RunLabels(s)},
-		Data:       map[string]string{"relay.conf": string(relayConf)},
-	}}
+	var objs []client.Object
+	for i, part := range parts {
+		objs = append(objs, &corev1.ConfigMap{
+			TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
+			ObjectMeta: metav1.ObjectMeta{Name: configMapName(i), Namespace: LoadNamespace, Labels: RunLabels(s)},
+			Data:       map[string]string{configFile(i): string(part)},
+		})
+	}
 	decoder := utilyaml.NewYAMLOrJSONDecoder(bytes.NewReader(raw), 4096)
 	for {
 		u := &unstructured.Unstructured{}
@@ -76,7 +79,7 @@ func CollectorObjects(s spec.RunSpec, relayConf []byte) ([]client.Object, error)
 			continue
 		}
 		u.SetLabels(merge(u.GetLabels(), RunLabels(s)))
-		if err := setCollectorRunValues(u, s); err != nil {
+		if err := setCollectorRunValues(u, s, len(parts)); err != nil {
 			return nil, fmt.Errorf("collector.yaml %s: %w", u.GetKind(), err)
 		}
 		objs = append(objs, u)
@@ -124,7 +127,12 @@ func CollectorImage() string {
 	return ""
 }
 
-func setCollectorRunValues(u *unstructured.Unstructured, s spec.RunSpec) error {
+func configMapName(i int) string { return fmt.Sprintf("otelcol-%d", i) }
+func configFile(i int) string    { return fmt.Sprintf("relay-%d.conf", i) }
+
+// setCollectorRunValues sets the run label, the memory limit and one --config arg
+// plus one projected ConfigMap source per config part.
+func setCollectorRunValues(u *unstructured.Unstructured, s spec.RunSpec, parts int) error {
 	if u.GetKind() != "Deployment" {
 		return nil
 	}
@@ -146,7 +154,29 @@ func setCollectorRunValues(u *unstructured.Unstructured, s spec.RunSpec) error {
 	if err := unstructured.SetNestedField(containers[0].(map[string]any), limit, "resources", "limits", "memory"); err != nil {
 		return err
 	}
-	return unstructured.SetNestedSlice(u.Object, containers, "spec", "template", "spec", "containers")
+	args := make([]any, parts)
+	sources := make([]any, parts)
+	for i := range parts {
+		args[i] = "--config=file:/conf/" + configFile(i)
+		sources[i] = map[string]any{"configMap": map[string]any{"name": configMapName(i)}}
+	}
+	if err := unstructured.SetNestedSlice(containers[0].(map[string]any), args, "args"); err != nil {
+		return err
+	}
+	if err := unstructured.SetNestedSlice(u.Object, containers, "spec", "template", "spec", "containers"); err != nil {
+		return err
+	}
+	volumes, _, err := unstructured.NestedSlice(u.Object, "spec", "template", "spec", "volumes")
+	if err != nil {
+		return err
+	}
+	if len(volumes) != 1 {
+		return fmt.Errorf("expected one volume, got %d", len(volumes))
+	}
+	if err := unstructured.SetNestedSlice(volumes[0].(map[string]any), sources, "projected", "sources"); err != nil {
+		return err
+	}
+	return unstructured.SetNestedSlice(u.Object, volumes, "spec", "template", "spec", "volumes")
 }
 
 // PipelineServices gives every exporter its own endpoint; in faulty runs p-000 of each

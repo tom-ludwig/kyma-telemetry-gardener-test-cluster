@@ -3,6 +3,7 @@ package manifests
 import (
 	"github.com/tom-ludwig/kyma-telemetry-gardener-test-cluster/load-test/tooling/internal/spec"
 
+	"reflect"
 	"strings"
 	"testing"
 
@@ -11,15 +12,37 @@ import (
 
 func parseConfig(t *testing.T, s spec.RunSpec) (map[string]any, ConfigStats) {
 	t.Helper()
-	raw, stats, err := BuildConfig(s)
+	parts, stats, err := BuildConfig(s)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var cfg map[string]any
-	if err := yaml.Unmarshal(raw, &cfg); err != nil {
-		t.Fatal(err)
+	return mergeParts(t, parts), stats
+}
+
+// mergeParts merges like the collector: maps deep, everything else replaced.
+func mergeParts(t *testing.T, parts [][]byte) map[string]any {
+	t.Helper()
+	cfg := map[string]any{}
+	for _, raw := range parts {
+		var part map[string]any
+		if err := yaml.Unmarshal(raw, &part); err != nil {
+			t.Fatal(err)
+		}
+		deepMerge(cfg, part)
 	}
-	return cfg, stats
+	return cfg
+}
+
+func deepMerge(dst, src map[string]any) {
+	for k, v := range src {
+		sub, ok := v.(map[string]any)
+		existing, exists := dst[k].(map[string]any)
+		if !ok || !exists {
+			dst[k] = v
+			continue
+		}
+		deepMerge(existing, sub)
+	}
 }
 
 func TestBuildConfigFanOut(t *testing.T) {
@@ -103,11 +126,52 @@ func TestExporterEndpoints(t *testing.T) {
 	}
 }
 
-func TestBuildConfigTooLarge(t *testing.T) {
-	if _, _, err := BuildConfig(spec.RunSpec{Shape: spec.ShapeF1, Tenants: 600, Load: spec.LoadA}); err == nil {
-		t.Error("600 tenants: want error above the 1 MiB ConfigMap limit")
+func TestBuildConfigSplit(t *testing.T) {
+	for _, shape := range []string{spec.ShapeF1, spec.ShapeR1} {
+		parts, stats, err := BuildConfig(spec.RunSpec{Shape: shape, Tenants: 1000, Load: spec.LoadA})
+		if err != nil {
+			t.Fatalf("%s: %v", shape, err)
+		}
+		if len(parts) < 3 || stats.ConfigMaps != len(parts) {
+			t.Errorf("%s: %d parts, stats %+v; want more than one tenant part", shape, len(parts), stats)
+		}
+		for i, p := range parts {
+			if len(p) > maxConfigMapBytes {
+				t.Errorf("%s: part %d is %d bytes, above 1 MiB", shape, i, len(p))
+			}
+		}
+		if pipelines := mergeParts(t, parts)["service"].(map[string]any)["pipelines"].(map[string]any); len(pipelines) != stats.ServicePipelines {
+			t.Errorf("%s: merged %d pipelines, want %d", shape, len(pipelines), stats.ServicePipelines)
+		}
 	}
-	if _, _, err := BuildConfig(spec.RunSpec{Shape: spec.ShapeF1, Tenants: 300, Load: spec.LoadA}); err != nil {
-		t.Errorf("300 tenants: %v", err)
+}
+
+func TestSplitConfigMergesBack(t *testing.T) {
+	base := map[string]any{"receivers": map[string]any{"otlp": map[string]any{}}}
+	sections := map[string]map[string]any{
+		"processors": {"batch": map[string]any{"timeout": "1s"}, "filter/a": map[string]any{"error_mode": "ignore"}},
+		"exporters":  {"debug/a": map[string]any{}, "debug/b": map[string]any{}},
+		"pipelines": {
+			"traces/a": map[string]any{"receivers": []any{"otlp"}, "processors": []any{"filter/a", "batch"}, "exporters": []any{"debug/a"}},
+			"traces/b": map[string]any{"receivers": []any{"otlp"}, "processors": []any{"batch"}, "exporters": []any{"debug/b"}},
+		},
+	}
+	whole, err := splitConfig(base, sections, maxConfigMapBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 200 bytes fits one pipeline per part
+	split, err := splitConfig(base, sections, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(whole) != 2 || len(split) < 4 {
+		t.Errorf("got %d and %d parts, want 2 and at least 4", len(whole), len(split))
+	}
+	if !reflect.DeepEqual(mergeParts(t, whole), mergeParts(t, split)) {
+		t.Error("merged split parts differ from the unsplit config")
+	}
+	if _, err := splitConfig(base, sections, 10); err == nil {
+		t.Error("want error for an entry above the budget")
 	}
 }

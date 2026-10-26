@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ import (
 
 func TestCollectorObjects(t *testing.T) {
 	s := spec.RunSpec{Shape: spec.ShapeF1, Tenants: 2, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
-	objs, err := CollectorObjects(s, []byte("conf"))
+	objs, err := CollectorObjects(s, [][]byte{[]byte("base"), []byte("tenants")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,8 +38,17 @@ func TestCollectorObjects(t *testing.T) {
 		if limit != "4096Mi" {
 			t.Errorf("memory limit %q, want 4096Mi", limit)
 		}
+		args, _, _ := unstructured.NestedStringSlice(containers[0].(map[string]any), "args")
+		if !reflect.DeepEqual(args, []string{"--config=file:/conf/relay-0.conf", "--config=file:/conf/relay-1.conf"}) {
+			t.Errorf("args %v, want one --config per part", args)
+		}
+		volumes, _, _ := unstructured.NestedSlice(u.Object, "spec", "template", "spec", "volumes")
+		sources, _, _ := unstructured.NestedSlice(volumes[0].(map[string]any), "projected", "sources")
+		if len(sources) != 2 {
+			t.Errorf("projected sources %v, want one per part", sources)
+		}
 	}
-	want := map[string]int{"ConfigMap": 1, "ServiceAccount": 1, "Deployment": 1, "Service": 2, "VMPodScrape": 1}
+	want := map[string]int{"ConfigMap": 2, "ServiceAccount": 1, "Deployment": 1, "Service": 2, "VMPodScrape": 1}
 	for k, n := range want {
 		if kinds[k] != n {
 			t.Errorf("%s: got %d, want %d", k, kinds[k], n)
