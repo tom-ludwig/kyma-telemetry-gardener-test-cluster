@@ -249,7 +249,11 @@ func (r *Runner) applyTM(ctx context.Context, s spec.RunSpec) error {
 		return err
 	}
 	objs := manifests.DebugBackendObjects(s, spec.TMBackendNamespace)
-	objs = append(objs, manifests.GatewayServiceMonitor())
+	sm, err := manifests.GatewayServiceMonitor()
+	if err != nil {
+		return err
+	}
+	objs = append(objs, sm)
 	return r.create(ctx, append(objs, pipelines...))
 }
 

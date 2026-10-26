@@ -1,16 +1,19 @@
 package manifests
 
 import (
-	"github.com/tom-ludwig/kyma-telemetry-gardener-test-cluster/load-test/tooling/internal/spec"
-
+	_ "embed"
 	"fmt"
 
+	"github.com/tom-ludwig/kyma-telemetry-gardener-test-cluster/load-test/tooling/internal/spec"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+//go:embed debug-backend-config.yaml
+var debugBackendConfig string
 
 const (
 	tmAPIVersion = "telemetry.kyma-project.io/v1beta1"
@@ -141,50 +144,14 @@ func DebugBackendObjects(s spec.RunSpec, namespace string) []client.Object {
 
 const debugBackendImage = "otel/opentelemetry-collector-contrib:0.123.0"
 
-const debugBackendConfig = `receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: "0.0.0.0:4317"
-      http:
-        endpoint: "0.0.0.0:4318"
-exporters:
-  nop:
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      exporters: [nop]
-    metrics:
-      receivers: [otlp]
-      exporters: [nop]
-    logs:
-      receivers: [otlp]
-      exporters: [nop]
-`
-
 // GatewayServiceMonitor returns a Prometheus ServiceMonitor that scrapes the
 // TM-managed OTLP gateway pods on port 8888.
-func GatewayServiceMonitor() client.Object {
+func GatewayServiceMonitor() (client.Object, error) {
 	u := &unstructured.Unstructured{}
-	u.SetAPIVersion("monitoring.coreos.com/v1")
-	u.SetKind("ServiceMonitor")
-	u.SetName("telemetry-otlp-gateway")
-	u.SetNamespace("kyma-system")
-	u.Object["spec"] = map[string]any{
-		"selector": map[string]any{
-			"matchLabels": map[string]any{
-				"app.kubernetes.io/name": "telemetry-otlp-gateway",
-			},
-		},
-		"endpoints": []any{
-			map[string]any{
-				"port": "http-metrics",
-				"path": "/metrics",
-			},
-		},
+	if err := readTemplate("gateway-service-monitor.yaml", &u.Object); err != nil {
+		return nil, err
 	}
-	return u
+	return u, nil
 }
 
 func toAnyMap(m map[string]string) map[string]any {

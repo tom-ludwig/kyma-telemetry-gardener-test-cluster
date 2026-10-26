@@ -24,7 +24,6 @@ const (
 	tmCollectorSel = `namespace="kyma-system",pod=~"telemetry-otlp-gateway-.*"`
 	// tmContainerSel narrows the gateway's cadvisor series to the collector container; the pod
 	// also runs an istio-proxy sidecar whose memory/CPU must not count.
-	// TODO confirm the collector container name on the live gateway pod.
 	tmContainerSel = tmCollectorSel + `,container="collector"`
 	step           = 15 * time.Second
 	hold           = 5 * time.Minute

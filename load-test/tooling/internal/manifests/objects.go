@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml
+//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml gateway-service-monitor.yaml
 var manifestsFS embed.FS
 
 const (
