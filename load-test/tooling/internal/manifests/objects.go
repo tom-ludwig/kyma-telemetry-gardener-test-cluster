@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml
+//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml gateway-service-monitor.yaml
 var manifestsFS embed.FS
 
 const (
@@ -60,6 +60,7 @@ func CollectorObjects(s spec.RunSpec, parts [][]byte) ([]client.Object, error) {
 	var objs []client.Object
 	for i, part := range parts {
 		objs = append(objs, &corev1.ConfigMap{
+			TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
 			ObjectMeta: metav1.ObjectMeta{Name: configMapName(i), Namespace: LoadNamespace, Labels: RunLabels(s)},
 			Data:       map[string]string{configFile(i): string(part)},
 		})
@@ -198,13 +199,15 @@ func PipelineServices(s spec.RunSpec) ([]client.Object, error) {
 	return objs, nil
 }
 
+// pipelineService gives each exporter its own endpoint, all backed by the one nop debug
+// collector. In faulty runs p-000 of each signal points at the fault backend instead.
 func pipelineService(tmpl *corev1.Service, fault *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, i int) *corev1.Service {
 	svc := tmpl.DeepCopy()
 	svc.Name = fmt.Sprintf("%s-%s", sig.Name, spec.PipelineID(i))
 	svc.Labels = merge(svc.Labels, RunLabels(s))
-	svc.Spec.Selector = map[string]string{"app.kubernetes.io/name": sig.Backend, "app.kubernetes.io/instance": "load-test"}
-	svc.Spec.Ports[0].Port = int32(sig.Port)
-	svc.Spec.Ports[0].TargetPort = intstr.FromInt(sig.Port)
+	svc.Spec.Selector = map[string]string{"app": DebugBackendName}
+	svc.Spec.Ports[0].Port = int32(DebugBackendPort)
+	svc.Spec.Ports[0].TargetPort = intstr.FromInt(DebugBackendPort)
 	if s.Health != spec.Faulty || i != 0 {
 		return svc
 	}
@@ -237,6 +240,15 @@ func Generators(s spec.RunSpec, duration time.Duration) ([]client.Object, error)
 	return objs, nil
 }
 
+// generatorEndpoint is the OTLP gRPC endpoint generators send to: our collector for otel,
+// the managed Telemetry Manager gateway for tm.
+func generatorEndpoint(s spec.RunSpec) string {
+	if s.Target == spec.TargetTM {
+		return spec.TMGatewayEndpoint
+	}
+	return "otelcol.otel-load-test.svc:4317"
+}
+
 func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, duration time.Duration) *appsv1.Deployment {
 	d := tmpl.DeepCopy()
 	d.Name = fmt.Sprintf("gen-%s", sig.Name)
@@ -265,7 +277,7 @@ func generatorScript(s spec.RunSpec, sig spec.Signal, duration time.Duration) st
 	}
 	fmt.Fprintf(&b, `for i in $(seq 0 %d); do
   telemetrygen %s \
-    --otlp-endpoint=otelcol.otel-load-test.svc:4317 \
+    --otlp-endpoint=%s \
     --otlp-insecure --allow-export-failures \
     --workers=%d --rate=%g \
     --duration=%s \
@@ -275,6 +287,7 @@ wait
 `,
 		s.Tenants-1,
 		sig.Name,
+		generatorEndpoint(s),
 		workers, float64(rate)/float64(workers),
 		duration,
 		bodyArg,

@@ -1,5 +1,6 @@
 # One Service per pipeline, so every exporter has its own endpoint.
-# Per run the tool sets name, selector (backend or fault backend) and port.
+# Per run the tool sets name, selector and port: the nop debug collector for healthy
+# pipelines, the fault backend for a faulty p-000.
 apiVersion: v1
 kind: Service
 metadata:
@@ -7,9 +8,8 @@ metadata:
   namespace: load-test-backends
 spec:
   selector:
-    app.kubernetes.io/name: vtsingle
-    app.kubernetes.io/instance: load-test
+    app: debug-backend
   ports:
     - name: http
-      port: 10428
-      targetPort: 10428
+      port: 4318
+      targetPort: 4318

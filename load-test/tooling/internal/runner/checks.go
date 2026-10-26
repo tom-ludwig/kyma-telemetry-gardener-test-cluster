@@ -34,7 +34,7 @@ type nodes struct {
 // preflight stops a run before anything is created when the cluster cannot carry it.
 // Objects of an earlier, killed run are removed first, so the collector node is free again.
 func (r *Runner) preflight(ctx context.Context, s spec.RunSpec) (nodes, error) {
-	if err := r.removeObjects(ctx, client.HasLabels{manifests.RunLabel}); err != nil {
+	if err := r.removeAll(ctx, client.HasLabels{manifests.RunLabel}, s.Target); err != nil {
 		return nodes{}, fmt.Errorf("remove objects of an earlier run: %w", err)
 	}
 	n, err := r.checkNodes(ctx, s)
@@ -42,18 +42,20 @@ func (r *Runner) preflight(ctx context.Context, s spec.RunSpec) (nodes, error) {
 		return n, err
 	}
 	// Without it k8s_attributes only logs "forbidden" and passes data through unenriched.
-	var binding rbacv1.ClusterRoleBinding
-	if err := r.k.Get(ctx, types.NamespacedName{Name: "otelcol"}, &binding); err != nil {
-		return n, fmt.Errorf("ClusterRoleBinding otelcol for k8s_attributes (deployed by Flux): %w", err)
+	// The managed TM gateway has its own RBAC, so this only guards the otel collector.
+	if s.Target == spec.TargetOTel {
+		var binding rbacv1.ClusterRoleBinding
+		if err := r.k.Get(ctx, types.NamespacedName{Name: "otelcol"}, &binding); err != nil {
+			return n, fmt.Errorf("ClusterRoleBinding otelcol for k8s_attributes (deployed by Flux): %w", err)
+		}
 	}
 	if r.skipPreflight {
-		log.Printf("%s: preflight capacity, backend readiness and disk checks skipped (-skip-preflight)", s.ID())
+		log.Printf("%s: preflight capacity and disk checks skipped (-skip-preflight)", s.ID())
 		return n, nil
 	}
-	if err := r.checkBackendsReady(ctx); err != nil {
-		return n, err
-	}
-	return n, r.checkDisks(ctx, s)
+	// vm-single stores our own otelcol_* metrics; it must keep headroom. No test backends to
+	// check: both targets export to the nop debug collector.
+	return n, r.checkVMSingleDisk(ctx)
 }
 
 func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) {
@@ -173,35 +175,6 @@ func add(sum, l corev1.ResourceList) {
 	}
 }
 
-func (r *Runner) backendPods(ctx context.Context) (map[string]corev1.Pod, error) {
-	var pods corev1.PodList
-	if err := r.k.List(ctx, &pods, client.InNamespace(manifests.BackendNamespace), client.MatchingLabels{"app.kubernetes.io/instance": "load-test"}); err != nil {
-		return nil, err
-	}
-	byBackend := map[string]corev1.Pod{}
-	for _, p := range pods.Items {
-		if p.DeletionTimestamp != nil {
-			continue
-		}
-		byBackend[p.Labels["app.kubernetes.io/name"]] = p
-	}
-	return byBackend, nil
-}
-
-func (r *Runner) checkBackendsReady(ctx context.Context) error {
-	pods, err := r.backendPods(ctx)
-	if err != nil {
-		return err
-	}
-	for _, sig := range spec.Signals {
-		p, ok := pods[sig.Backend]
-		if !ok || !podReady(p) {
-			return fmt.Errorf("backend %s-load-test is not ready", sig.Backend)
-		}
-	}
-	return nil
-}
-
 func podReady(p corev1.Pod) bool {
 	for _, c := range p.Status.Conditions {
 		if c.Type == corev1.PodReady {
@@ -211,20 +184,10 @@ func podReady(p corev1.Pod) bool {
 	return false
 }
 
-// checkDisks: each backend must hold this run's data, vm-single must keep 5 % free.
-func (r *Runner) checkDisks(ctx context.Context, s spec.RunSpec) error {
-	seconds := (r.warmup + r.steady).Seconds()
-	for _, sig := range spec.Signals {
-		free, _, err := r.freeDisk(ctx, manifests.BackendNamespace, sig.Backend+"-load-test", sig.FreeDiskMetric)
-		if err != nil {
-			return err
-		}
-		need := float64(s.OfferedRate(sig)*sig.StoredBytes) * seconds
-		if free < need {
-			return fmt.Errorf("%s-load-test has %.1f GiB free, run needs about %.1f GiB", sig.Backend, free/(1<<30), need/(1<<30))
-		}
-	}
-	free, capacity, err := r.freeDisk(ctx, monitoringNamespace, vmSinglePVC, "vm_free_disk_space_bytes")
+// checkVMSingleDisk fails the run when the self-monitoring vm-single that stores our
+// otelcol_* metrics is below the free-space floor.
+func (r *Runner) checkVMSingleDisk(ctx context.Context) error {
+	free, capacity, err := r.vmSingleDisk(ctx)
 	if err != nil {
 		return err
 	}
@@ -234,21 +197,20 @@ func (r *Runner) checkDisks(ctx context.Context, s spec.RunSpec) error {
 	return nil
 }
 
-// freeDisk returns free bytes from the backend's own metric and the PVC capacity.
-func (r *Runner) freeDisk(ctx context.Context, ns, pvc, metric string) (free, capacity float64, err error) {
+// vmSingleDisk returns vm-single's free bytes and PVC capacity.
+func (r *Runner) vmSingleDisk(ctx context.Context) (free, capacity float64, err error) {
 	var claim corev1.PersistentVolumeClaim
-	if err := r.k.Get(ctx, types.NamespacedName{Namespace: ns, Name: pvc}, &claim); err != nil {
-		return 0, 0, fmt.Errorf("PVC %s/%s: %w", ns, pvc, err)
+	if err := r.k.Get(ctx, types.NamespacedName{Namespace: monitoringNamespace, Name: vmSinglePVC}, &claim); err != nil {
+		return 0, 0, fmt.Errorf("PVC %s/%s: %w", monitoringNamespace, vmSinglePVC, err)
 	}
 	capacity = claim.Status.Capacity.Storage().AsApproximateFloat64()
-	free, err = r.p.Required(ctx, fmt.Sprintf(`min(%s{namespace=%q})`, metric, ns), time.Now())
+	free, err = r.p.Required(ctx, fmt.Sprintf(`min(vm_free_disk_space_bytes{namespace=%q})`, monitoringNamespace), time.Now())
 	return free, capacity, err
 }
 
 // watchdog checks every 30 s and returns the reason to stop the run; it records collector restarts.
 func (r *Runner) watchdog(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, watch *collectorWatch) <-chan string {
 	stop := make(chan string, 1)
-	baseline, _ := r.backendPods(ctx)
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -258,7 +220,7 @@ func (r *Runner) watchdog(ctx context.Context, s spec.RunSpec, w result.Window, 
 				return
 			case <-ticker.C:
 			}
-			reason := r.watchdogCheck(ctx, s, w, n, baseline, watch)
+			reason := r.watchdogCheck(ctx, s, w, n, watch)
 			if reason == "" {
 				continue
 			}
@@ -269,42 +231,16 @@ func (r *Runner) watchdog(ctx context.Context, s spec.RunSpec, w result.Window, 
 	return stop
 }
 
-func (r *Runner) watchdogCheck(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, baseline map[string]corev1.Pod, watch *collectorWatch) string {
-	if reason := r.checkBackendsStable(ctx, baseline); reason != "" {
-		return reason
-	}
-	for _, sig := range spec.Signals {
-		free, capacity, err := r.freeDisk(ctx, manifests.BackendNamespace, sig.Backend+"-load-test", sig.FreeDiskMetric)
-		if err != nil {
-			return "vm-single unreachable: " + err.Error()
-		}
-		if free < minFreeDisk*capacity {
-			return fmt.Sprintf("%s-load-test disk below 5 %% free", sig.Backend)
-		}
-	}
-	free, capacity, err := r.freeDisk(ctx, monitoringNamespace, vmSinglePVC, "vm_free_disk_space_bytes")
+func (r *Runner) watchdogCheck(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, watch *collectorWatch) string {
+	free, capacity, err := r.vmSingleDisk(ctx)
 	if err != nil || free < minFreeDisk*capacity {
 		return "vm-single unreachable or disk below 5 % free"
 	}
-	r.observeCollector(ctx, watch)
+	r.observeCollector(ctx, s, watch)
 	if time.Now().Before(w.SteadyStart) {
 		return ""
 	}
 	return r.checkGenerators(ctx, s, n)
-}
-
-func (r *Runner) checkBackendsStable(ctx context.Context, baseline map[string]corev1.Pod) string {
-	pods, err := r.backendPods(ctx)
-	if err != nil {
-		return "cannot list backend pods: " + err.Error()
-	}
-	for _, sig := range spec.Signals {
-		p, ok := pods[sig.Backend]
-		if !ok || !podReady(p) || p.UID != baseline[sig.Backend].UID || podRestarts(p) > podRestarts(baseline[sig.Backend]) {
-			return fmt.Sprintf("backend %s-load-test restarted or not ready", sig.Backend)
-		}
-	}
-	return ""
 }
 
 func podRestarts(p corev1.Pod) int32 {
@@ -325,9 +261,14 @@ type collectorWatch struct {
 	restartAt, oomAt *float64
 }
 
-func (r *Runner) observeCollector(ctx context.Context, watch *collectorWatch) {
+func (r *Runner) observeCollector(ctx context.Context, s spec.RunSpec, watch *collectorWatch) {
+	ns, labels := manifests.LoadNamespace, client.MatchingLabels{"app.kubernetes.io/name": "otelcol"}
+	if s.Target == spec.TargetTM {
+		// The managed gateway is shared and long-lived; watch it by its fixed labels.
+		ns, labels = spec.TMNamespace, client.MatchingLabels{"app.kubernetes.io/name": spec.TMGatewayApp}
+	}
 	var pods corev1.PodList
-	if err := r.k.List(ctx, &pods, client.InNamespace(manifests.LoadNamespace), client.MatchingLabels{"app.kubernetes.io/name": "otelcol"}); err != nil {
+	if err := r.k.List(ctx, &pods, client.InNamespace(ns), labels); err != nil {
 		log.Printf("watchdog: list collector pods: %v", err)
 		return
 	}

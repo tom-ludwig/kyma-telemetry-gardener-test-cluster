@@ -237,24 +237,19 @@ func exporterName(sig spec.Signal, i int) string {
 	return fmt.Sprintf("otlp_http/%s-%s", sig.Name, spec.PipelineID(i))
 }
 
-// exporterConfig mirrors TM's otlp_http exporter, pointed at the pipeline's own Service.
+// exporterConfig is an otlp_http exporter pointed at the pipeline's own Service, which is
+// backed by the nop debug collector (or the fault backend for a faulty p-000). The exporter
+// appends the standard /v1/<signal> path itself, so only the base endpoint is set.
 func exporterConfig(s spec.RunSpec, sig spec.Signal, pid string) map[string]any {
-	url := fmt.Sprintf("http://%s-%s.%s.svc:%d%s", sig.Name, pid, BackendNamespace, sig.Port, sig.Path)
-	cfg := map[string]any{
+	url := fmt.Sprintf("http://%s-%s.%s.svc:%d", sig.Name, pid, BackendNamespace, DebugBackendPort)
+	return map[string]any{
+		"endpoint":      url,
 		"compression":   "gzip",
 		"sending_queue": map[string]any{"enabled": true, "queue_size": s.QueueSize()},
 		"retry_on_failure": map[string]any{
 			"enabled": true, "initial_interval": "5s", "max_interval": "30s", "max_elapsed_time": "300s",
 		},
 	}
-	if sig.Header == "" {
-		// shortcut: extra_label on the OTLP path is unverified; switch to a resource processor if VM ignores it.
-		cfg[sig.EndpointKey] = url + "?extra_label=pipeline=" + pid
-		return cfg
-	}
-	cfg[sig.EndpointKey] = url
-	cfg["headers"] = map[string]any{sig.Header: "pipeline=" + pid}
-	return cfg
 }
 
 // filterConfig drops every item that does not belong to the tenant.

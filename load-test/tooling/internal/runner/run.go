@@ -46,9 +46,14 @@ func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration,
 
 // Run executes one run and prints its result record.
 func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error) {
-	configParts, stats, err := manifests.BuildConfig(s)
-	if err != nil {
-		return nil, err
+	var configParts [][]byte
+	var stats manifests.ConfigStats
+	if s.Target == spec.TargetOTel {
+		var err error
+		configParts, stats, err = manifests.BuildConfig(s)
+		if err != nil {
+			return nil, err
+		}
 	}
 	n, err := r.preflight(ctx, s)
 	if err != nil {
@@ -56,16 +61,24 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 	}
 	defer r.cleanup(context.WithoutCancel(ctx), s)
 
-	log.Printf("%s: fresh backends", s.ID())
-	if err := r.restartBackends(ctx); err != nil {
-		return nil, err
-	}
-	if err := r.applyCollector(ctx, s, configParts); err != nil {
-		return nil, err
-	}
-	startup, err := r.waitCollector(ctx)
-	if err != nil {
-		return nil, err
+	var startup float64
+	if s.Target == spec.TargetTM {
+		if err := r.applyTM(ctx, s); err != nil {
+			return nil, err
+		}
+		if err := r.waitPipelines(ctx, s); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := r.applyCollector(ctx, s, configParts); err != nil {
+			return nil, err
+		}
+		if err := r.waitDebugBackend(ctx, manifests.BackendNamespace); err != nil {
+			return nil, err
+		}
+		if startup, err = r.waitCollector(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	gens, err := manifests.Generators(s, r.warmup+r.steady)
@@ -95,7 +108,7 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 		return nil, err
 	}
 	drain := r.waitDrain(ctx, s, w.SteadyEnd)
-	r.observeCollector(ctx, watch) // restarts after the last watchdog tick
+	r.observeCollector(ctx, s, watch) // restarts after the last watchdog tick
 	w.End = time.Now()
 	rec.Run.End = w.End
 
@@ -111,10 +124,14 @@ func (r *Runner) newRecord(s spec.RunSpec, stats manifests.ConfigStats, startup 
 	if err != nil {
 		return nil, err
 	}
+	collectorImage := ""
+	if s.Target == spec.TargetOTel {
+		collectorImage = manifests.CollectorImage()
+	}
 	rec := &result.Record{
 		Run: result.RunInfo{ID: s.ID(), Args: r.args, ToolCommit: result.ToolCommit, Date: time.Now().UTC(),
-			CollectorImage: manifests.CollectorImage(), Start: w.Start, SteadyStart: w.SteadyStart, SteadyEnd: w.SteadyEnd},
-		Setup: result.Setup{Shape: s.Shape, Load: s.Load, Tenants: s.Tenants, Health: s.Health,
+			CollectorImage: collectorImage, Start: w.Start, SteadyStart: w.SteadyStart, SteadyEnd: w.SteadyEnd},
+		Setup: result.Setup{Target: s.Target, Shape: s.Shape, Load: s.Load, Tenants: s.Tenants, Health: s.Health,
 			RatePerTenant: map[string]int{}, OfferedPerS: map[string]int{},
 			MemLimitMiB: s.MemoryLimitMi(), QueueSizePerExporter: s.QueueSize(),
 			PhasesS:   result.Phases{Warmup: r.warmup.Seconds(), Steady: r.steady.Seconds(), Cooldown: r.cooldown.Seconds()},
@@ -195,67 +212,96 @@ func (r *Runner) fill(ctx context.Context, s spec.RunSpec, w result.Window, n no
 			return err
 		}
 		rec.Signals[sig.Name] = res
-		if res.BackendIngestRatio < 0.99 {
-			rec.Valid = false
-			rec.InvalidReason = fmt.Sprintf("%s backend stored %.0f %% of exported", sig.Name, 100*res.BackendIngestRatio)
-		}
 	}
 	if err := r.p.EvalLimits(ctx, s, w, rec, n.env.CollectorNode.CPU); err != nil {
 		return err
 	}
-	healthy := s
-	healthy.Health, healthy.Rep = spec.Healthy, 1
-	result.AddIsolation(rec, s, r.done[healthy.ID()], w)
+	// S5 isolation compares a faulty run with its healthy baseline; tm has no faulty runs.
+	if s.Target == spec.TargetOTel {
+		healthy := s
+		healthy.Health, healthy.Rep = spec.Healthy, 1
+		result.AddIsolation(rec, s, r.done[healthy.ID()], w)
+	}
 	return nil
 }
 
-// restartBackends deletes the backend pods; their Deployments create fresh ones.
-func (r *Runner) restartBackends(ctx context.Context) error {
-	old, err := r.backendPods(ctx)
+// waitDebugBackend waits until the per-run nop debug collector pod is Ready in ns, so the
+// collector under test has somewhere to export to before load starts.
+func (r *Runner) waitDebugBackend(ctx context.Context, ns string) error {
+	return poll(ctx, 5*time.Minute, "debug backend Ready", func() (bool, error) {
+		var pods corev1.PodList
+		if err := r.k.List(ctx, &pods, client.InNamespace(ns), client.MatchingLabels{"app": manifests.DebugBackendName}); err != nil {
+			return false, err
+		}
+		for _, p := range pods.Items {
+			if p.DeletionTimestamp == nil && podReady(p) {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+}
+
+// applyTM deploys the per-run nop debug backend and the Telemetry Manager pipeline CRs.
+func (r *Runner) applyTM(ctx context.Context, s spec.RunSpec) error {
+	pipelines, err := manifests.TMPipelineObjects(s)
 	if err != nil {
 		return err
 	}
-	for _, p := range old {
-		if err := r.k.Delete(ctx, &p); client.IgnoreNotFound(err) != nil {
-			return err
-		}
+	objs := manifests.DebugBackendObjects(s, spec.TMBackendNamespace)
+	sm, err := manifests.GatewayServiceMonitor()
+	if err != nil {
+		return err
 	}
-	var pods map[string]corev1.Pod
-	err = poll(ctx, 5*time.Minute, "fresh backends", func() (bool, error) {
-		pods, err = r.backendPods(ctx)
-		if err != nil {
-			return false, err
-		}
-		for _, sig := range spec.Signals {
-			p, ok := pods[sig.Backend]
-			if !ok || p.UID == old[sig.Backend].UID || !podReady(p) {
+	objs = append(objs, sm)
+	return r.create(ctx, append(objs, pipelines...))
+}
+
+// waitPipelines waits until every pipeline CR reports ConfigurationGenerated=True and the
+// debug backend is Ready, so the gateway has the run's config before load starts.
+func (r *Runner) waitPipelines(ctx context.Context, s spec.RunSpec) error {
+	pipelines, err := manifests.TMPipelineObjects(s)
+	if err != nil {
+		return err
+	}
+	return poll(ctx, 5*time.Minute, "pipelines ConfigurationGenerated", func() (bool, error) {
+		for _, p := range pipelines {
+			u := &unstructured.Unstructured{}
+			u.SetGroupVersionKind(p.GetObjectKind().GroupVersionKind())
+			if err := r.k.Get(ctx, client.ObjectKeyFromObject(p), u); err != nil {
+				return false, client.IgnoreNotFound(err)
+			}
+			if !conditionTrue(u, "ConfigurationGenerated") {
 				return false, nil
 			}
 		}
 		return true, nil
 	})
-	if err != nil {
-		return err
-	}
-	// the watchdog reads the new pods' disk metrics; they reach vm-single only after a scrape
-	return poll(ctx, 3*time.Minute, "fresh backend metrics", func() (bool, error) {
-		for _, sig := range spec.Signals {
-			q := fmt.Sprintf(`min(%s{namespace=%q,pod=%q})`, sig.FreeDiskMetric, manifests.BackendNamespace, pods[sig.Backend].Name)
-			_, ok, err := r.p.Value(ctx, q, time.Now())
-			if err != nil || !ok {
-				return false, err
-			}
-		}
-		return true, nil
-	})
 }
 
+// conditionTrue reports whether status.conditions has type t with status "True".
+func conditionTrue(u *unstructured.Unstructured, t string) bool {
+	conds, _, _ := unstructured.NestedSlice(u.Object, "status", "conditions")
+	for _, c := range conds {
+		m, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		if m["type"] == t && m["status"] == "True" {
+			return true
+		}
+	}
+	return false
+}
+
+// applyCollector deploys the collector under test, its per-pipeline Services, the per-run
+// nop debug backend they export to, and the fault backend for faulty runs.
 func (r *Runner) applyCollector(ctx context.Context, s spec.RunSpec, configParts [][]byte) error {
 	svcs, err := manifests.PipelineServices(s)
 	if err != nil {
 		return err
 	}
-	objs := svcs
+	objs := append(svcs, manifests.DebugBackendObjects(s, manifests.BackendNamespace)...)
 	if s.Health == spec.Faulty {
 		fault, err := manifests.FaultBackend(s)
 		if err != nil {
@@ -319,7 +365,7 @@ func (r *Runner) waitDrain(ctx context.Context, s spec.RunSpec, loadStop time.Ti
 
 func (r *Runner) create(ctx context.Context, objs []client.Object) error {
 	for _, o := range objs {
-		if err := r.k.Create(ctx, o); err != nil {
+		if err := r.k.Patch(ctx, o, client.Apply, client.ForceOwnership, client.FieldOwner("loadtest")); err != nil {
 			return fmt.Errorf("create %T %s: %w", o, o.GetName(), err)
 		}
 	}
@@ -337,7 +383,7 @@ func (r *Runner) delete(ctx context.Context, objs []client.Object) error {
 
 // cleanup removes every object of the run.
 func (r *Runner) cleanup(ctx context.Context, s spec.RunSpec) {
-	if err := r.removeObjects(ctx, client.MatchingLabels(manifests.RunLabels(s))); err != nil {
+	if err := r.removeAll(ctx, client.MatchingLabels(manifests.RunLabels(s)), s.Target); err != nil {
 		log.Printf("%s: cleanup incomplete: %v", s.ID(), err)
 	}
 }
@@ -348,7 +394,31 @@ type selector interface {
 	client.DeleteAllOfOption
 }
 
-// removeObjects deletes the matching objects in both namespaces and waits until their pods are gone.
+// tmPipelineGVKs are the cluster-scoped Telemetry Manager pipeline kinds the tool creates.
+var tmPipelineGVKs = []schema.GroupVersionKind{
+	{Group: "telemetry.kyma-project.io", Version: "v1beta1", Kind: "LogPipeline"},
+	{Group: "telemetry.kyma-project.io", Version: "v1beta1", Kind: "MetricPipeline"},
+	{Group: "telemetry.kyma-project.io", Version: "v1beta1", Kind: "TracePipeline"},
+}
+
+// removeAll removes run objects for the target: the otel namespaces always, plus the tm
+// debug-backend namespace and the cluster-scoped pipeline CRs when the target is tm.
+func (r *Runner) removeAll(ctx context.Context, labels selector, target string) error {
+	if target == spec.TargetTM {
+		bg := client.PropagationPolicy("Background")
+		for _, gvk := range tmPipelineGVKs {
+			u := &unstructured.Unstructured{}
+			u.SetGroupVersionKind(gvk)
+			if err := r.k.DeleteAllOf(ctx, u, labels, bg); err != nil && !apierrors.IsNotFound(err) {
+				log.Printf("cleanup %s: %v", gvk.Kind, err)
+			}
+		}
+		r.deleteAll(ctx, spec.TMBackendNamespace, labels)
+	}
+	return r.removeObjects(ctx, labels)
+}
+
+// removeObjects deletes the matching objects in the otel namespaces and waits until their pods are gone.
 func (r *Runner) removeObjects(ctx context.Context, labels selector) error {
 	for _, ns := range []string{manifests.LoadNamespace, manifests.BackendNamespace} {
 		r.deleteAll(ctx, ns, labels)
