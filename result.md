@@ -61,65 +61,118 @@ Custom collector pipelines are configured accordingly for every tenant and signa
 Below is an architectural overview of this test setup:
 ![Architecture sketch of the load test deployed on a Gardener shoot](./benchmark-setup-otel.drawio.svg)
 
-### Performance Results
+### Performance Results: Baseline Setup (Minimal Processing)
 
-Both configurations were tested under a constant steady-state load of **25k signals/s** (6,000 logs/s, 9,000 metrics/s, and 10,000 traces/s) across a 10-minute window on an `n1-standard-4` node.
+Both configurations were tested under a constant steady-state load of **25k signals/s** (6,000 logs/s, 9,000 metrics/s, and 10,000 traces/s) across a 10-minute window on an `n1-standard-4` node without heavy transformations. While Routing was evaluated across all tiers from 1 to 100 tenants, Fan-Out was benchmarked at scale (50 and 100 tenants):
 
-#### 1. Routing vs. Fan-Out Comparison
-
-Comparing the two architectures at 50 and 100 tenants demonstrates the massive CPU efficiency gained by centralizing global processors:
-
-| Architecture | Tenants | Pipelines | CPU avg | CPU p95 | RSS max   | Valid Throughput |
-| ------------ | ------- | --------- | ------- | ------- | --------- | ---------------- |
-| **Routing**  | 50      | 153       | 0.46    | 0.54    | 606 MiB   | 100% (0 drops)   |
-| **Fan-Out**  | 50      | 150       | 1.62    | 1.82    | 676 MiB   | 100% (0 drops)   |
-| **Routing**  | 100     | 303       | 0.49    | 0.59    | 868 MiB   | 100% (0 drops)   |
-| **Fan-Out**  | 100     | 300       | 2.83    | 3.35    | 1 066 MiB | ~7–8% dropped ⚠  |
+| Tenants | Architecture | Pipelines | CPU avg | CPU p95 | RSS max | Working Set max | Config Size | Valid Throughput |
+|---|---|---|---|---|---|---|---|---|
+| 1 | **Routing** | 6 | 0.44 | 0.51 | 253 MiB | 116 MiB | 3.5 KiB | 100% (0 drops) |
+| 3 | **Routing** | 12 | 0.44 | 0.50 | 262 MiB | 131 MiB | 7.3 KiB | 100% (0 drops) |
+| 5 | **Routing** | 18 | 0.46 | 0.53 | 278 MiB | 145 MiB | 11.2 KiB | 100% (0 drops) |
+| 10 | **Routing** | 33 | 0.45 | 0.52 | 305 MiB | 194 MiB | 20.8 KiB | 100% (0 drops) |
+| 20 | **Routing** | 63 | 0.47 | 0.54 | 381 MiB | 268 MiB | 40.1 KiB | 100% (0 drops) |
+| 30 | **Routing** | 93 | 0.45 | 0.52 | 460 MiB | 369 MiB | 59.2 KiB | 100% (0 drops) |
+| 50 | **Routing** | 153 | 0.46 | 0.54 | 606 MiB | 550 MiB | 97.6 KiB | 100% (0 drops) |
+| 50 | **Fan-Out** | 150 | 1.62 | 1.82 | 676 MiB | 704 MiB | 103.9 KiB | 100% (0 drops) |
+| 100 | **Routing** | 303 | 0.49 | 0.59 | 868 MiB | 1 031 MiB | 193.7 KiB | 100% (0 drops) |
+| 100 | **Fan-Out** | 300 | 2.83 | 3.35 | 1 066 MiB | 1 164 MiB | 206.8 KiB | ~7–8% dropped ⚠ |
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626, #16a34a"
+---
 xychart-beta
-    title "CPU Usage (Avg Cores): Routing vs. Fan-Out"
-    x-axis ["50T (Router)", "50T (Fan-Out)", "100T (Router)", "100T (Fan-Out)"]
+    title "Baseline CPU Usage (Avg Cores): Fan-Out vs. Routing"
+    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
     y-axis "CPU Cores" 0 --> 3.5
-    bar [0.46, 1.62, 0.49, 2.83]
-```
-
-#### 2. Routing Pipeline Scaling (1 to 100 Tenants)
-
-Using unified routing pipelines, CPU consumption remains almost flat while memory scales predictably with tenants:
-
-| Tenants | Pipelines | CPU avg | CPU p95 | RSS max | Working Set max | Config Size |
-| ------- | --------- | ------- | ------- | ------- | --------------- | ----------- |
-| 1       | 6         | 0.44    | 0.51    | 253 MiB | 116 MiB         | 3.5 KiB     |
-| 3       | 12        | 0.44    | 0.50    | 262 MiB | 131 MiB         | 7.3 KiB     |
-| 5       | 18        | 0.46    | 0.53    | 278 MiB | 145 MiB         | 11.2 KiB    |
-| 10      | 33        | 0.45    | 0.52    | 305 MiB | 194 MiB         | 20.8 KiB    |
-| 20      | 63        | 0.47    | 0.54    | 381 MiB | 268 MiB         | 40.1 KiB    |
-| 30      | 93        | 0.45    | 0.52    | 460 MiB | 369 MiB         | 59.2 KiB    |
-| 50      | 153       | 0.46    | 0.54    | 606 MiB | 550 MiB         | 97.6 KiB    |
-| 100     | 303       | 0.49    | 0.59    | 868 MiB | 1 031 MiB       | 193.7 KiB   |
-
-```mermaid
-xychart-beta
-    title "Routing Architecture: CPU Usage (Avg Bar, p95 Line)"
-    x-axis ["1", "3", "5", "10", "20", "30", "50", "100"]
-    y-axis "CPU Cores" 0 --> 1
-    bar [0.44, 0.44, 0.46, 0.45, 0.47, 0.45, 0.46, 0.49]
-    line [0.51, 0.50, 0.53, 0.52, 0.54, 0.52, 0.54, 0.59]
+    bar "Fan-Out" [0, 0, 0, 0, 0, 0, 1.62, 2.83]
+    bar "Routing" [0.44, 0.44, 0.46, 0.45, 0.47, 0.45, 0.46, 0.49]
 ```
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626, #16a34a"
+---
 xychart-beta
-    title "Routing Architecture: Memory Growth (RSS Max in MiB)"
-    x-axis ["1", "3", "5", "10", "20", "30", "50", "100"]
-    y-axis "RSS Max (MiB)" 200 --> 900
-    bar [253, 262, 278, 305, 381, 460, 606, 868]
+    title "Baseline Memory (RSS Max MiB): Fan-Out vs. Routing"
+    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
+    y-axis "RSS Max (MiB)" 200 --> 1200
+    bar "Fan-Out" [0, 0, 0, 0, 0, 0, 676, 1066]
+    bar "Routing" [253, 262, 278, 305, 381, 460, 606, 868]
 ```
 
-#### Key Takeaways
+*(Note: Fan-Out baseline tests were executed only at 50 and 100 tenants).*
+
+#### Key Takeaways (Baseline)
 
 - **CPU stays constant with routing**: Centralizing `k8s_attributes` enrichment in an initial pipeline prevents duplicate work, keeping CPU usage around ~0.49 cores even at 100 tenants (303 pipelines).
 - **Fan-out suffers from processor duplication**: Duplicating processors across every pipeline instantiated 900 processor instances at 100 tenants, pushing CPU usage to 2.83 cores (~6x higher) and causing queue saturation and message drops.
 - **Config size scales linearly**: Reaching ~194 KiB at 100 tenants, remaining well below Kubernetes' 1 MiB ConfigMap boundary.
+
+### Performance Results: Production Setup (With Transforms & Enrichments)
+
+To evaluate real-world production overhead, tests were repeated with full Telemetry Manager gateway processing enabled (`k8s_attributes` enrichment and OTTL `transform` processors across all tenant pipelines) under identical 25k signals/s traffic on an `n1-standard-4` node.
+
+#### 1. Architecture Comparison with Transforms
+
+Activating transformations highlights the stark contrast between architectures: Routing comfortably absorbs the extra processing, whereas Fan-Out saturates node CPU and drops nearly half of incoming signals:
+
+| Architecture | Tenants | Pipelines | Processor Instances | CPU avg | CPU p95 | RSS max | Valid Throughput |
+|---|---|---|---|---|---|---|---|
+| **Routing** | 1 | 6 | 18 | 0.54 | 0.65 | 271 MiB | 100% (0 drops) |
+| **Fan-Out** | 1 | 4 | 18 | 0.56 | 0.62 | 279 MiB | 100% (0 drops) |
+| **Routing** | 10 | 33 | 45 | 0.58 | 0.67 | 324 MiB | 100% (0 drops) |
+| **Fan-Out** | 10 | 31 | 144 | 0.92 | 1.13 | 370 MiB | 100% (0 drops) |
+| **Routing** | 20 | 63 | 75 | 0.62 | 0.75 | 384 MiB | 100% (0 drops) |
+| **Fan-Out** | 20 | 61 | 284 | 1.30 | 1.48 | 488 MiB | 100% (0 drops) |
+| **Routing** | 50 | 153 | 165 | 0.58 | 0.70 | 584 MiB | 100% (0 drops) |
+| **Fan-Out** | 50 | 151 | 704 | 2.47 | 2.97 | 922 MiB | Degraded (~5% drops) |
+| **Routing** | 100 | 303 | 315 | 0.64 | 0.77 | 972 MiB | 100% (0 drops) |
+| **Fan-Out** | 100 | 301 | 1 404 | 3.47 | 3.98 | 1 878 MiB | **Severe drop** (41% logs, 47% metrics) ⚠ |
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626, #16a34a"
+---
+xychart-beta
+    title "CPU Usage (Avg Cores) with Transforms: Routing vs. Fan-Out"
+    x-axis ["1T", "10T", "20T", "50T", "100T"]
+    y-axis "CPU Cores" 0 --> 4
+    bar "Fan-Out" [0.56, 0.92, 1.30, 2.47, 3.47]
+    bar "Routing" [0.54, 0.58, 0.62, 0.58, 0.64]
+    
+```
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626, #16a34a"
+---
+xychart-beta
+    title "Memory (RSS Max MiB) with Transforms: Routing vs. Fan-Out"
+    x-axis ["1T", "10T", "20T", "50T", "100T"]
+    y-axis "RSS Max (MiB)" 200 --> 2000
+    bar "Fan-Out" [279, 370, 488, 922, 1878]
+    bar "Routing" [271, 324, 384, 584, 972]
+
+```
+
+#### Key Takeaways (Transforms)
+
+- **Routing handles transformations with negligible scaling penalty**: Transform processing increases baseline CPU by only ~0.10–0.15 cores. As tenant counts scale from 1 to 100, average CPU remains below 0.64 cores (p95 0.77 cores) with zero dropped telemetry.
+- **Fan-out causes severe node saturation and data loss**: Duplicating transform processors spawns 1,404 processor instances at 100 tenants. Average CPU shoots to 3.47 cores (p95 3.98 cores, reaching 100% of node capacity), internal queues fill up completely (`queue_util_max 1.0`), and the collector drops 41% of logs and 47% of metrics.
+- **Memory stays contained in Routing**: Centralized routing caps peak RSS memory at 972 MiB at 100 tenants, compared to 1,878 MiB in Fan-Out.
 
 ### Failure Results
