@@ -2,3 +2,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: otel-load-test
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tm-pipeline-test
