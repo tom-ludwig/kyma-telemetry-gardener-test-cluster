@@ -4,6 +4,9 @@ kind: VMAgent
 metadata:
   name: vmagent
 spec:
+  podMetadata:
+    labels:
+      networking.kyma-project.io/metrics-scraping: allowed
   replicaCount: 1
   selectAllByDefault: true
   scrapeInterval: 15s
