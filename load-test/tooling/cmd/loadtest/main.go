@@ -8,6 +8,7 @@ import (
 
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -25,6 +26,7 @@ import (
 func main() {
 	var s spec.RunSpec
 	flag.StringVar(&s.Target, "target", spec.TargetOTel, "otel (plain collector we build) or tm (Telemetry Manager gateway via pipeline CRs)")
+	flag.StringVar(&s.Component, "component", spec.ComponentGateway, "gateway, log-agent, metric-agent or all (gateway + both agents); agents and all need -target tm")
 	flag.StringVar(&s.Shape, "shape", spec.ShapeF1, "F1 (fan-out) or R1 (routing); tm supports F1 only")
 	flag.IntVar(&s.Tenants, "tenants", 1, "tenants; each has one traces, metrics and logs pipeline")
 	flag.StringVar(&s.Load, "load", spec.LoadA, "A (fixed total split across tenants) or B (-rate per tenant)")
@@ -61,8 +63,11 @@ func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldo
 	if err != nil {
 		return err
 	}
+	if matrix && s.Component == spec.ComponentAll {
+		return fmt.Errorf("-component all runs once at -tenants, not with -matrix")
+	}
 	if matrix {
-		return r.Matrix(ctx, s.Target, s.Rate, only)
+		return r.Matrix(ctx, s.Target, s.Component, s.Rate, only)
 	}
 	if err := s.Validate(); err != nil {
 		return err

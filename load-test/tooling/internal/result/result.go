@@ -19,46 +19,53 @@ const (
 	// VMPodScrape copies the pod label loadtest.kyma-project.io/run under this sanitized name.
 	RunPromLabel = "loadtest_kyma_project_io_run"
 	collectorSel = `namespace="otel-load-test",container="otelcol"`
-	// tmCollectorSel selects the managed TM gateway pods; they carry no per-run label, so runs
-	// are attributed by the measurement Window alone (runs are serial).
-	tmCollectorSel = `namespace="kyma-system",pod=~"telemetry-otlp-gateway-.*"`
-	// tmContainerSel narrows the gateway's cadvisor series to the collector container; the pod
-	// also runs an istio-proxy sidecar whose memory/CPU must not count.
-	tmContainerSel = tmCollectorSel + `,container="collector"`
-	step           = 15 * time.Second
-	hold           = 5 * time.Minute
+	step         = 15 * time.Second
+	hold         = 5 * time.Minute
 )
 
+// tmCollectorSel selects one managed TM component's pods; they carry no per-run label, so runs
+// are attributed by the measurement Window alone (runs are serial).
+func tmCollectorSel(component string) string {
+	return fmt.Sprintf(`namespace=%q,pod=~"%s-.*"`, spec.TMNamespace, spec.TMApps[component])
+}
+
 // collectorSelFor returns the pod-level selector for the collector under test.
-func collectorSelFor(target string) string {
+func collectorSelFor(target, component string) string {
 	if target == spec.TargetTM {
-		return tmCollectorSel
+		return tmCollectorSel(component)
 	}
 	return collectorSel
 }
 
 // containerSelFor returns the container-scoped selector for cadvisor memory/CPU series,
-// excluding sidecars that share the pod.
-func containerSelFor(target string) string {
-	if target == spec.TargetTM {
-		return tmContainerSel
+// excluding sidecars that share the pod. Agents run on every node; only the one on the
+// collector node gets load, so their cadvisor series are narrowed to that node.
+func containerSelFor(target, component string) string {
+	if target != spec.TargetTM {
+		return collectorSel
 	}
-	return collectorSel
+	sel := tmCollectorSel(component) + `,container="collector"`
+	if component == spec.ComponentGateway {
+		return sel
+	}
+	return sel + `,load_test_role="collector"`
 }
 
 // ToolCommit is the git commit the tool was built from, set by the image build (-ldflags -X).
 var ToolCommit = "dev"
 
 type Record struct {
-	Run           RunInfo                 `json:"run"`
-	Setup         Setup                   `json:"setup"`
-	Env           Env                     `json:"env"`
-	Config        ConfigRecord            `json:"config"`
-	Signals       map[string]SignalResult `json:"signals"`
-	Collector     CollectorResult         `json:"collector"`
-	Limit         Limits                  `json:"limit"`
-	Valid         bool                    `json:"valid"`
-	InvalidReason string                  `json:"invalid_reason,omitempty"`
+	Run       RunInfo                 `json:"run"`
+	Setup     Setup                   `json:"setup"`
+	Env       Env                     `json:"env"`
+	Config    ConfigRecord            `json:"config"`
+	Signals   map[string]SignalResult `json:"signals"` // by unit key: signal, or component/signal for agents
+	Collector CollectorResult         `json:"collector"`
+	// Agents holds the node agents of a combined run (-component all); Collector is the gateway then.
+	Agents        map[string]CollectorResult `json:"agents,omitempty"`
+	Limit         Limits                     `json:"limit"`
+	Valid         bool                       `json:"valid"`
+	InvalidReason string                     `json:"invalid_reason,omitempty"`
 }
 
 type RunInfo struct {
@@ -75,6 +82,7 @@ type RunInfo struct {
 
 type Setup struct {
 	Target               string         `json:"target"`
+	Component            string         `json:"component"`
 	Shape                string         `json:"shape"`
 	Load                 string         `json:"load"`
 	Tenants              int            `json:"tenants"`
@@ -96,9 +104,10 @@ type Phases struct {
 }
 
 type GeneratorSetup struct {
-	Image            string         `json:"image"`
-	WorkersPerTenant map[string]int `json:"workers_per_tenant"` // telemetrygen workers per tenant and signal
-	LogBodyBytes     int            `json:"log_body_bytes"`
+	Image            string            `json:"image"`
+	AgentImages      map[string]string `json:"agent_images,omitempty"` // node-agent generators by component
+	WorkersPerTenant map[string]int    `json:"workers_per_tenant"`     // telemetrygen workers per tenant and signal
+	LogBodyBytes     int               `json:"log_body_bytes"`
 }
 
 type FaultSetup struct {
@@ -248,27 +257,37 @@ func (w Window) promRange() string {
 
 type Selectors struct{ Run, Exp, Healthy string }
 
-func SelectorsFor(s spec.RunSpec, sig spec.Signal) Selectors {
+func SelectorsFor(s spec.RunSpec, u spec.Unit) Selectors {
 	if s.Target == spec.TargetTM {
-		// The managed gateway has no run label and names its own exporters; attribute by the
-		// gateway pod selector and the measurement Window. No faulty split.
-		return Selectors{Run: tmCollectorSel, Exp: tmCollectorSel, Healthy: tmCollectorSel}
+		// Managed TM components have no run label and name their own exporters; attribute by
+		// the component's pod selector and the measurement Window. No faulty split.
+		sel := tmCollectorSel(u.Component)
+		return Selectors{Run: sel, Exp: sel, Healthy: sel}
 	}
 	run := fmt.Sprintf(`%s=%q`, RunPromLabel, s.ID())
-	exp := fmt.Sprintf(`%s,exporter=~"otlp_http/%s-p-.*"`, run, sig.Name)
+	exp := fmt.Sprintf(`%s,exporter=~"otlp_http/%s-p-.*"`, run, u.Signal.Name)
 	healthy := exp
 	if s.Health == spec.Faulty {
-		healthy = fmt.Sprintf(`%s,exporter!="otlp_http/%s-p-000"`, exp, sig.Name)
+		healthy = fmt.Sprintf(`%s,exporter!="otlp_http/%s-p-000"`, exp, u.Signal.Name)
 	}
 	return Selectors{Run: run, Exp: exp, Healthy: healthy}
 }
 
-// signalResult runs the per-signal queries over the steady Window W.
-func (p Prom) QuerySignal(ctx context.Context, s spec.RunSpec, sig spec.Signal, w Window) (SignalResult, error) {
-	sel, W, at, t := SelectorsFor(s, sig), w.promRange(), w.SteadyEnd, sig.Item
+// receivedQuery is the accepted items/s of a unit over range W. The log agent runs one
+// filelog receiver per pipeline and each reads every line, so the slowest reader counts.
+func receivedQuery(u spec.Unit, sel Selectors, W string) string {
+	if u.Component == spec.ComponentLogAgent {
+		return fmt.Sprintf(`min(sum by (receiver) (rate(otelcol_receiver_accepted_%s_total{%s}[%s])))`, u.Signal.Item, sel.Run, W)
+	}
+	return fmt.Sprintf(`sum(rate(otelcol_receiver_accepted_%s_total{%s}[%s]))`, u.Signal.Item, sel.Run, W)
+}
+
+// signalResult runs the per-unit queries over the steady Window W.
+func (p Prom) QuerySignal(ctx context.Context, s spec.RunSpec, u spec.Unit, w Window) (SignalResult, error) {
+	sel, W, at, t := SelectorsFor(s, u), w.promRange(), w.SteadyEnd, u.Signal.Item
 	var r SignalResult
 	var err error
-	if r.ReceivedPerS, err = p.Required(ctx, fmt.Sprintf(`sum(rate(otelcol_receiver_accepted_%s_total{%s}[%s]))`, t, sel.Run, W), at); err != nil {
+	if r.ReceivedPerS, err = p.Required(ctx, receivedQuery(u, sel, W), at); err != nil {
 		return r, err
 	}
 	if r.ExportedPerS, err = p.Required(ctx, fmt.Sprintf(`sum(rate(otelcol_exporter_sent_%s_total{%s}[%s]))`, t, sel.Exp, W), at); err != nil {
@@ -308,10 +327,10 @@ func (p Prom) QuerySignal(ctx context.Context, s spec.RunSpec, sig spec.Signal, 
 	return r, nil
 }
 
-func (p Prom) QueryCollector(ctx context.Context, s spec.RunSpec, w Window) (CollectorResult, error) {
+func (p Prom) QueryCollector(ctx context.Context, s spec.RunSpec, component string, w Window) (CollectorResult, error) {
 	run := fmt.Sprintf(`%s=%q`, RunPromLabel, s.ID())
-	cSel := collectorSelFor(s.Target)
-	ctSel := containerSelFor(s.Target)
+	cSel := collectorSelFor(s.Target, component)
+	ctSel := containerSelFor(s.Target, component)
 	W, at := w.promRange(), w.SteadyEnd
 	const mib = 1 << 20
 	var r CollectorResult
@@ -346,8 +365,13 @@ func (p Prom) QueryCollector(ctx context.Context, s spec.RunSpec, w Window) (Col
 // limits evaluates H1–H4 and S1–S4; S5 needs the healthy record and is added by the caller.
 func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Record, nodeACores float64) error {
 	at := func(t time.Time) float64 { return t.Sub(w.Start).Seconds() }
-	cSel := collectorSelFor(s.Target)
-	addCollectorLimits(rec, at(w.End))
+	for _, c := range s.Components() {
+		name, res := rec.collector(s, c)
+		addCollectorLimits(rec, name, res, at(w.End))
+		if nodeACores > 0 && res.CPUP95 >= 0.9*nodeACores {
+			rec.Limit.Add(Hit{ID: "S4", Signal: name, AtS: at(w.SteadyEnd)})
+		}
+	}
 	if rec.Config.StartupS > 60 {
 		rec.Limit.Add(Hit{ID: "H2", AtS: 0})
 	}
@@ -355,22 +379,30 @@ func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Rec
 	// S3 compares against the collector memory limit we set; the managed TM gateway has none.
 	if s.Target == spec.TargetOTel {
 		limitBytes := float64(s.MemoryLimitMi()) * (1 << 20)
-		held = append(held, struct{ id, q string }{"S3", fmt.Sprintf(`max(container_memory_working_set_bytes{%s}) > %f`, cSel, 0.8*limitBytes)})
+		held = append(held, struct{ id, q string }{"S3", fmt.Sprintf(`max(container_memory_working_set_bytes{%s}) > %f`, collectorSel, 0.8*limitBytes)})
 	}
-	for _, sig := range spec.Signals {
-		sel, t := SelectorsFor(s, sig), sig.Item
+	// TM sets the agents' limit itself (and VPA may change it), so S3 reads it from the pod.
+	for _, c := range s.Components() {
+		if s.Target != spec.TargetTM || c == spec.ComponentGateway {
+			continue
+		}
+		ct := containerSelFor(s.Target, c)
+		held = append(held, struct{ id, q string }{"S3:" + c, fmt.Sprintf(`max(container_memory_working_set_bytes{%[1]s} / container_spec_memory_limit_bytes{%[1]s}) > 0.8`, ct)})
+	}
+	for _, u := range s.Units() {
+		sel, t, key := SelectorsFor(s, u), u.Signal.Item, u.Key()
 		healthyShare := 1.0
 		if s.Health == spec.Faulty {
 			healthyShare = float64(s.Tenants-1) / float64(s.Tenants)
 		}
-		offered := float64(s.OfferedRate(sig)) * healthyShare
+		offered := float64(s.OfferedRate(u.Signal)) * healthyShare
 		held = append(held,
-			struct{ id, q string }{"H3:" + sig.Name, fmt.Sprintf(`(sum(rate(otelcol_exporter_enqueue_failed_%[1]s_total{%[2]s}[5m])) > 0) or (sum(rate(otelcol_exporter_send_failed_%[1]s_total{%[2]s}[5m])) > 0)`, t, sel.Healthy)},
-			struct{ id, q string }{"S1:" + sig.Name, fmt.Sprintf(`sum(rate(otelcol_receiver_refused_%s_total{%s}[5m])) > 0`, t, sel.Run)},
-			struct{ id, q string }{"S2:" + sig.Name, fmt.Sprintf(`max(otelcol_exporter_queue_size{%[1]s} / otelcol_exporter_queue_capacity{%[1]s}) > 0.8`, sel.Healthy)},
+			struct{ id, q string }{"H3:" + key, fmt.Sprintf(`(sum(rate(otelcol_exporter_enqueue_failed_%[1]s_total{%[2]s}[5m])) > 0) or (sum(rate(otelcol_exporter_send_failed_%[1]s_total{%[2]s}[5m])) > 0)`, t, sel.Healthy)},
+			struct{ id, q string }{"S1:" + key, fmt.Sprintf(`sum(rate(otelcol_receiver_refused_%s_total{%s}[5m])) > 0`, t, sel.Run)},
+			struct{ id, q string }{"S2:" + key, fmt.Sprintf(`max(otelcol_exporter_queue_size{%[1]s} / otelcol_exporter_queue_capacity{%[1]s}) > 0.8`, sel.Healthy)},
 		)
 		if s.Load == spec.LoadA {
-			held = append(held, struct{ id, q string }{"H4:" + sig.Name, fmt.Sprintf(`sum(rate(otelcol_exporter_sent_%s_total{%s}[1m])) < %f`, t, sel.Healthy, 0.95*offered)})
+			held = append(held, struct{ id, q string }{"H4:" + key, fmt.Sprintf(`sum(rate(otelcol_exporter_sent_%s_total{%s}[1m])) < %f`, t, sel.Healthy, 0.95*offered)})
 		}
 	}
 	for _, c := range held {
@@ -385,23 +417,40 @@ func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Rec
 		id, signal := splitID(c.id)
 		rec.Limit.Add(Hit{ID: id, Signal: signal, AtS: at(start)})
 	}
-	if nodeACores > 0 && rec.Collector.CPUP95 >= 0.9*nodeACores {
-		rec.Limit.Add(Hit{ID: "S4", AtS: at(w.SteadyEnd)})
-	}
 	return nil
 }
 
+// collector returns a component's result and the name its hits carry: Collector holds the
+// first component (no name, as before), Agents the agents of a combined run.
+func (rec *Record) collector(s spec.RunSpec, component string) (string, CollectorResult) {
+	if component == s.Components()[0] {
+		return "", rec.Collector
+	}
+	return component, rec.Agents[component]
+}
+
+// SetCollector stores a component's result where collector reads it.
+func (rec *Record) SetCollector(s spec.RunSpec, component string, res CollectorResult) {
+	if component == s.Components()[0] {
+		rec.Collector = res
+		return
+	}
+	if rec.Agents == nil {
+		rec.Agents = map[string]CollectorResult{}
+	}
+	rec.Agents[component] = res
+}
+
 // addCollectorLimits: H1 for an OOM kill or eviction, H2 for any restart (pod status).
-func addCollectorLimits(rec *Record, endS float64) {
-	c := rec.Collector
+func addCollectorLimits(rec *Record, name string, c CollectorResult, endS float64) {
 	if c.OOMAtS != nil {
-		rec.Limit.Add(Hit{ID: "H1", AtS: *c.OOMAtS})
+		rec.Limit.Add(Hit{ID: "H1", Signal: name, AtS: *c.OOMAtS})
 	}
 	if c.Evicted && c.OOMAtS == nil {
-		rec.Limit.Add(Hit{ID: "H1", AtS: endS})
+		rec.Limit.Add(Hit{ID: "H1", Signal: name, AtS: endS})
 	}
 	if c.RestartAtS != nil {
-		rec.Limit.Add(Hit{ID: "H2", AtS: *c.RestartAtS})
+		rec.Limit.Add(Hit{ID: "H2", Signal: name, AtS: *c.RestartAtS})
 	}
 }
 

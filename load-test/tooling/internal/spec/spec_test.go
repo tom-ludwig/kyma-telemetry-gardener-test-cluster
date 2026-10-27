@@ -1,12 +1,20 @@
 package spec
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRunID(t *testing.T) {
 	cases := map[string]RunSpec{
 		"otel-f1-A-t050-healthy-r1":    {Target: TargetOTel, Shape: ShapeF1, Tenants: 50, Load: LoadA, Health: Healthy, Rep: 1, Rate: 1000},
 		"otel-r1-B1000-t005-faulty-r3": {Target: TargetOTel, Shape: ShapeR1, Tenants: 5, Load: LoadB, Health: Faulty, Rep: 3, Rate: 1000},
 		"tm-f1-A-t050-healthy-r1":      {Target: TargetTM, Shape: ShapeF1, Tenants: 50, Load: LoadA, Health: Healthy, Rep: 1, Rate: 1000},
+		// gateway keeps the old ID; agents and all add the component
+		"tm-f1-A-t010-healthy-r1":               {Target: TargetTM, Component: ComponentGateway, Shape: ShapeF1, Tenants: 10, Load: LoadA, Health: Healthy, Rep: 1},
+		"tm-log-agent-f1-B1000-t050-healthy-r1": {Target: TargetTM, Component: ComponentLogAgent, Shape: ShapeF1, Tenants: 50, Load: LoadB, Health: Healthy, Rep: 1, Rate: 1000},
+		"tm-metric-agent-f1-A-t005-healthy-r2":  {Target: TargetTM, Component: ComponentMetricAgent, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 2},
+		"tm-all-f1-A-t020-healthy-r1":           {Target: TargetTM, Component: ComponentAll, Shape: ShapeF1, Tenants: 20, Load: LoadA, Health: Healthy, Rep: 1},
 	}
 	for want, s := range cases {
 		if got := s.ID(); got != want {
@@ -73,13 +81,41 @@ func TestValidate(t *testing.T) {
 	if err := faulty.Validate(); err != nil {
 		t.Errorf("valid tm faulty run rejected: %v", err)
 	}
+	agent := RunSpec{Target: TargetTM, Component: ComponentAll, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1}
+	if err := agent.Validate(); err != nil {
+		t.Errorf("valid tm all run rejected: %v", err)
+	}
 	reject := map[string]RunSpec{
-		"bad target": {Target: "x", Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
-		"tm+R1":      {Target: TargetTM, Shape: ShapeR1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
+		"bad target":          {Target: "x", Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
+		"tm+R1":               {Target: TargetTM, Shape: ShapeR1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
+		"bad component":       {Target: TargetTM, Component: "x", Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
+		"otel+log-agent":      {Target: TargetOTel, Component: ComponentLogAgent, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
+		"metric-agent+faulty": {Target: TargetTM, Component: ComponentMetricAgent, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Faulty, Rep: 1},
 	}
 	for name, s := range reject {
 		if err := s.Validate(); err == nil {
 			t.Errorf("%s: want error, got nil", name)
+		}
+	}
+}
+
+func TestUnits(t *testing.T) {
+	keys := func(s RunSpec) string {
+		var out []string
+		for _, u := range s.Units() {
+			out = append(out, u.Key())
+		}
+		return strings.Join(out, ",")
+	}
+	cases := map[string]RunSpec{
+		"traces,metrics,logs":  {},
+		"log-agent/logs":       {Component: ComponentLogAgent},
+		"metric-agent/metrics": {Component: ComponentMetricAgent},
+		"traces,metrics,logs,log-agent/logs,metric-agent/metrics": {Component: ComponentAll},
+	}
+	for want, s := range cases {
+		if got := keys(s); got != want {
+			t.Errorf("%q units = %q, want %q", s.Component, got, want)
 		}
 	}
 }

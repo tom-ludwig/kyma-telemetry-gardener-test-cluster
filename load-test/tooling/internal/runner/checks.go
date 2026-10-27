@@ -93,7 +93,12 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 	if err := r.checkCollectorNodeFree(ctx, n.collector); err != nil {
 		return n, err
 	}
-	pods := int64(len(spec.Signals)) // 1 pod per signal
+	var pods int64 // 1 telemetrygen pod per gateway signal; agent generators run on the collector node
+	for _, u := range s.Units() {
+		if u.Component == spec.ComponentGateway {
+			pods++
+		}
+	}
 	need := corev1.ResourceList{
 		corev1.ResourceCPU:    *resource.NewMilliQuantity(pods*r.genCPU.MilliValue(), resource.DecimalSI),
 		corev1.ResourceMemory: *resource.NewQuantity(pods*r.genMemory.Value(), resource.BinarySI),
@@ -209,7 +214,7 @@ func (r *Runner) vmSingleDisk(ctx context.Context) (free, capacity float64, err 
 }
 
 // watchdog checks every 30 s and returns the reason to stop the run; it records collector restarts.
-func (r *Runner) watchdog(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, watch *collectorWatch) <-chan string {
+func (r *Runner) watchdog(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, watches map[string]*collectorWatch) <-chan string {
 	stop := make(chan string, 1)
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
@@ -220,7 +225,7 @@ func (r *Runner) watchdog(ctx context.Context, s spec.RunSpec, w result.Window, 
 				return
 			case <-ticker.C:
 			}
-			reason := r.watchdogCheck(ctx, s, w, n, watch)
+			reason := r.watchdogCheck(ctx, s, w, n, watches)
 			if reason == "" {
 				continue
 			}
@@ -231,12 +236,12 @@ func (r *Runner) watchdog(ctx context.Context, s spec.RunSpec, w result.Window, 
 	return stop
 }
 
-func (r *Runner) watchdogCheck(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, watch *collectorWatch) string {
+func (r *Runner) watchdogCheck(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, watches map[string]*collectorWatch) string {
 	free, capacity, err := r.vmSingleDisk(ctx)
 	if err != nil || free < minFreeDisk*capacity {
 		return "vm-single unreachable or disk below 5 % free"
 	}
-	r.observeCollector(ctx, s, watch)
+	r.observeCollectors(ctx, s, n, watches)
 	if time.Now().Before(w.SteadyStart) {
 		return ""
 	}
@@ -261,18 +266,38 @@ type collectorWatch struct {
 	restartAt, oomAt *float64
 }
 
-func (r *Runner) observeCollector(ctx context.Context, s spec.RunSpec, watch *collectorWatch) {
-	ns, labels := manifests.LoadNamespace, client.MatchingLabels{"app.kubernetes.io/name": "otelcol"}
-	if s.Target == spec.TargetTM {
-		// The managed gateway is shared and long-lived; watch it by its fixed labels.
-		ns, labels = spec.TMNamespace, client.MatchingLabels{"app.kubernetes.io/name": spec.TMGatewayApp}
+// newWatches holds one collectorWatch per component under test.
+func newWatches(s spec.RunSpec, start time.Time) map[string]*collectorWatch {
+	watches := map[string]*collectorWatch{}
+	for _, c := range s.Components() {
+		watches[c] = &collectorWatch{start: start}
 	}
-	var pods corev1.PodList
-	if err := r.k.List(ctx, &pods, client.InNamespace(ns), labels); err != nil {
-		log.Printf("watchdog: list collector pods: %v", err)
-		return
+	return watches
+}
+
+func (r *Runner) observeCollectors(ctx context.Context, s spec.RunSpec, n nodes, watches map[string]*collectorWatch) {
+	for c, watch := range watches {
+		var pods corev1.PodList
+		if err := r.k.List(ctx, &pods, collectorPods(s, c, n)...); err != nil {
+			log.Printf("watchdog: list %s pods: %v", c, err)
+			continue
+		}
+		watch.observe(pods.Items, time.Now())
 	}
-	watch.observe(pods.Items, time.Now())
+}
+
+// collectorPods selects the pods of one component under test. Managed TM components are
+// shared and long-lived; they are watched by their fixed labels. Agents run on every node,
+// only the one on the collector node gets load.
+func collectorPods(s spec.RunSpec, component string, n nodes) []client.ListOption {
+	if s.Target != spec.TargetTM {
+		return []client.ListOption{client.InNamespace(manifests.LoadNamespace), client.MatchingLabels{"app.kubernetes.io/name": "otelcol"}}
+	}
+	opts := []client.ListOption{client.InNamespace(spec.TMNamespace), client.MatchingLabels{"app.kubernetes.io/name": spec.TMApps[component]}}
+	if component == spec.ComponentGateway {
+		return opts
+	}
+	return append(opts, client.MatchingFields{"spec.nodeName": n.collector})
 }
 
 func (c *collectorWatch) observe(pods []corev1.Pod, now time.Time) {
@@ -319,8 +344,12 @@ func (r *Runner) checkGenerators(ctx context.Context, s spec.RunSpec, n nodes) s
 	if err != nil {
 		return ""
 	}
-	for _, sig := range spec.Signals {
-		sel := result.SelectorsFor(s, sig)
+	// Agent generators share the collector node; their rate is checked by a calibration run.
+	for _, u := range s.Units() {
+		if u.Component != spec.ComponentGateway {
+			continue
+		}
+		sel, sig := result.SelectorsFor(s, u), u.Signal
 		received, ok, err := r.p.Value(ctx, fmt.Sprintf(`sum(rate(otelcol_receiver_accepted_%s_total{%s}[1m]))`, sig.Item, sel.Run), time.Now())
 		if err != nil || !ok {
 			continue
