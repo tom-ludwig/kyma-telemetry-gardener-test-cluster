@@ -104,8 +104,6 @@ func (s RunSpec) Validate() error {
 		return fmt.Errorf("-shape must be F1 or R1, got %q", s.Shape)
 	case s.Target == TargetTM && s.Shape != ShapeF1:
 		return fmt.Errorf("-target tm supports only -shape F1 (Telemetry Manager has no routing), got %q", s.Shape)
-	case s.Target == TargetTM && s.Health != Healthy:
-		return fmt.Errorf("-target tm supports only -health healthy (no fault backend), got %q", s.Health)
 	case s.Load != LoadA && s.Load != LoadB:
 		return fmt.Errorf("-load must be A or B, got %q", s.Load)
 	case s.Health != Healthy && s.Health != Faulty:

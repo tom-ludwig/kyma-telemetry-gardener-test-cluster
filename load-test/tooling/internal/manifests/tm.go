@@ -36,11 +36,18 @@ var tmKind = map[string]string{
 	"traces":  "TracePipeline",
 }
 
+const (
+	faultBackendName = "fault-backend"
+	faultBackendPort = 4318
+)
+
 // TMPipelineObjects returns the Telemetry Manager pipeline CRs for a run: one pipeline per
 // signal and tenant, each keeping only its tenant (same F1 filter as the otel path) and
-// exporting to the per-run nop debug backend. The managed gateway and module are not touched.
+// exporting to the per-run nop debug backend. In faulty runs tenant 0 exports to the fault
+// backend instead. The managed gateway and module are not touched.
 func TMPipelineObjects(s spec.RunSpec) ([]client.Object, error) {
-	endpoint := fmt.Sprintf("http://%s.%s.svc:%d", debugBackend, spec.TMBackendNamespace, debugBackendPort)
+	debugEndpoint := fmt.Sprintf("http://%s.%s.svc:%d", debugBackend, spec.TMBackendNamespace, debugBackendPort)
+	faultEndpoint := fmt.Sprintf("http://%s.%s.svc:%d", faultBackendName, spec.TMBackendNamespace, faultBackendPort)
 	var objs []client.Object
 	for _, sig := range spec.Signals {
 		kind, ok := tmKind[sig.Name]
@@ -48,6 +55,10 @@ func TMPipelineObjects(s spec.RunSpec) ([]client.Object, error) {
 			return nil, fmt.Errorf("no Telemetry Manager kind for signal %q", sig.Name)
 		}
 		for i := range s.Tenants {
+			endpoint := debugEndpoint
+			if s.Health == spec.Faulty && i == 0 {
+				endpoint = faultEndpoint
+			}
 			objs = append(objs, tmPipeline(s, sig, kind, i, endpoint))
 		}
 	}

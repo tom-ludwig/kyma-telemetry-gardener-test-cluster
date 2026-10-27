@@ -218,13 +218,42 @@ func pipelineService(tmpl *corev1.Service, fault *appsv1.Deployment, s spec.RunS
 
 // FaultBackend is the static fault backend Deployment with the run label.
 func FaultBackend(s spec.RunSpec) (*appsv1.Deployment, error) {
+	return FaultBackendInNamespace(s, "")
+}
+
+// FaultBackendInNamespace is the fault backend Deployment with the run label, deployed in ns.
+// When ns is empty the namespace from the template is used.
+func FaultBackendInNamespace(s spec.RunSpec, ns string) (*appsv1.Deployment, error) {
 	var d appsv1.Deployment
 	if err := readTemplate("fault-backend.yaml", &d); err != nil {
 		return nil, err
 	}
 	d.Labels = merge(d.Labels, RunLabels(s))
 	d.Spec.Template.Labels = merge(d.Spec.Template.Labels, RunLabels(s))
+	if ns != "" {
+		d.Namespace = ns
+	}
 	return &d, nil
+}
+
+// FaultBackendService returns a Service in ns that exposes the fault backend pod.
+func FaultBackendService(s spec.RunSpec, ns string) (*corev1.Service, error) {
+	fault, err := FaultBackendInNamespace(s, ns)
+	if err != nil {
+		return nil, err
+	}
+	port := fault.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort
+	svc := &corev1.Service{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
+		ObjectMeta: metav1.ObjectMeta{Name: "fault-backend", Namespace: ns, Labels: RunLabels(s)},
+		Spec: corev1.ServiceSpec{
+			Selector: fault.Spec.Selector.MatchLabels,
+			Ports: []corev1.ServicePort{
+				{Name: "http-otlp", Port: int32(port), TargetPort: intstr.FromInt32(port)},
+			},
+		},
+	}
+	return svc, nil
 }
 
 // Generators: 1 Deployment per signal, each running a shell loop over all tenants.

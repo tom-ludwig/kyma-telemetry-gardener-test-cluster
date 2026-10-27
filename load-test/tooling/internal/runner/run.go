@@ -216,7 +216,7 @@ func (r *Runner) fill(ctx context.Context, s spec.RunSpec, w result.Window, n no
 	if err := r.p.EvalLimits(ctx, s, w, rec, n.env.CollectorNode.CPU); err != nil {
 		return err
 	}
-	// S5 isolation compares a faulty run with its healthy baseline; tm has no faulty runs.
+	// S5 isolation compares a faulty run with its healthy baseline.
 	if s.Target == spec.TargetOTel {
 		healthy := s
 		healthy.Health, healthy.Rep = spec.Healthy, 1
@@ -243,12 +243,24 @@ func (r *Runner) waitDebugBackend(ctx context.Context, ns string) error {
 }
 
 // applyTM deploys the per-run nop debug backend and the Telemetry Manager pipeline CRs.
+// In faulty runs the fault backend is also deployed; tenant 0's pipelines target it.
 func (r *Runner) applyTM(ctx context.Context, s spec.RunSpec) error {
 	pipelines, err := manifests.TMPipelineObjects(s)
 	if err != nil {
 		return err
 	}
 	objs := manifests.DebugBackendObjects(s, spec.TMBackendNamespace)
+	if s.Health == spec.Faulty {
+		fault, err := manifests.FaultBackendInNamespace(s, spec.TMBackendNamespace)
+		if err != nil {
+			return err
+		}
+		faultSvc, err := manifests.FaultBackendService(s, spec.TMBackendNamespace)
+		if err != nil {
+			return err
+		}
+		objs = append(objs, fault, faultSvc)
+	}
 	sm, err := manifests.GatewayServiceMonitor()
 	if err != nil {
 		return err

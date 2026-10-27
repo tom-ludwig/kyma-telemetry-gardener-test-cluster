@@ -69,10 +69,13 @@ func TestValidate(t *testing.T) {
 	if err := base.Validate(); err != nil {
 		t.Errorf("valid tm run rejected: %v", err)
 	}
+	faulty := RunSpec{Target: TargetTM, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Faulty, Rep: 1}
+	if err := faulty.Validate(); err != nil {
+		t.Errorf("valid tm faulty run rejected: %v", err)
+	}
 	reject := map[string]RunSpec{
 		"bad target": {Target: "x", Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
 		"tm+R1":      {Target: TargetTM, Shape: ShapeR1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
-		"tm+faulty":  {Target: TargetTM, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Faulty, Rep: 1},
 	}
 	for name, s := range reject {
 		if err := s.Validate(); err == nil {
