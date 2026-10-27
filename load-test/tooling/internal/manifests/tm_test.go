@@ -158,6 +158,46 @@ func TestMetricAgentGenerator(t *testing.T) {
 	}
 }
 
+// A combined run serves gateway and agent data through one pipeline per signal and tenant.
+func TestTMAllPipelines(t *testing.T) {
+	s := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentAll, Shape: spec.ShapeF1, Tenants: 2, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
+	objs, err := TMPipelineObjects(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objs) != 6 {
+		t.Fatalf("got %d pipelines, want 6", len(objs))
+	}
+	want := map[string]string{
+		"logs-p-000":    `resource.attributes["tenant"] != "tenant-000" and attributes["tenant"] != "tenant-000"`,
+		"metrics-p-000": `resource.attributes["tenant"] != "tenant-000" and resource.attributes["server.port"] != "9001"`,
+		"traces-p-000":  `resource.attributes["tenant"] != "tenant-000"`,
+	}
+	for _, o := range objs {
+		u := o.(*unstructured.Unstructured)
+		cond, ok := want[u.GetName()]
+		if !ok {
+			continue
+		}
+		filter, _, _ := unstructured.NestedSlice(u.Object, "spec", "filter")
+		if got := filter[0].(map[string]any)["conditions"].([]any)[0]; got != cond {
+			t.Errorf("%s filter %q, want %q", u.GetName(), got, cond)
+		}
+		otlp, found, _ := unstructured.NestedBool(u.Object, "spec", "input", "otlp", "enabled")
+		if found && !otlp {
+			t.Errorf("%s: OTLP input off in a combined run", u.GetName())
+		}
+	}
+	gens, err := Generators(s, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 3 telemetrygen + log generator + metric generator + 2 metric Services
+	if len(gens) != 7 {
+		t.Errorf("got %d generator objects, want 7", len(gens))
+	}
+}
+
 func TestGeneratorEndpointTM(t *testing.T) {
 	s := spec.RunSpec{Target: spec.TargetTM, Shape: spec.ShapeF1, Tenants: 1, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
 	objs, err := Generators(s, time.Minute)
