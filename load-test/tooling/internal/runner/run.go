@@ -15,6 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -399,7 +400,12 @@ func (r *Runner) waitDrain(ctx context.Context, s spec.RunSpec, loadStop time.Ti
 
 func (r *Runner) create(ctx context.Context, objs []client.Object) error {
 	for _, o := range objs {
-		if err := r.k.Patch(ctx, o, client.Apply, client.ForceOwnership, client.FieldOwner("loadtest")); err != nil {
+		u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(o)
+		if err != nil {
+			return fmt.Errorf("create %T %s: %w", o, o.GetName(), err)
+		}
+		apply := client.ApplyConfigurationFromUnstructured(&unstructured.Unstructured{Object: u})
+		if err := r.k.Apply(ctx, apply, client.ForceOwnership, client.FieldOwner("loadtest")); err != nil {
 			return fmt.Errorf("create %T %s: %w", o, o.GetName(), err)
 		}
 	}

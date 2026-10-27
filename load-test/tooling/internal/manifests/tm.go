@@ -200,8 +200,8 @@ func DebugBackendObjects(s spec.RunSpec, namespace string) []client.Object {
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{"app": debugBackend},
 			Ports: []corev1.ServicePort{
-				{Name: "grpc", Port: 4317, TargetPort: intstr.FromInt(4317)},
-				{Name: "http", Port: debugBackendPort, TargetPort: intstr.FromInt(debugBackendPort)},
+				{Name: "grpc", Port: 4317, TargetPort: intstr.FromInt32(4317)},
+				{Name: "http", Port: debugBackendPort, TargetPort: intstr.FromInt32(debugBackendPort)},
 			},
 		},
 	}

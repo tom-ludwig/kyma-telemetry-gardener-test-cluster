@@ -256,11 +256,11 @@ func NextSearch(passed map[int]bool) (next int, done bool) {
 
 // SmallestFailing returns the smallest tenant count with a hard limit, or 0.
 func SmallestFailing(passed map[int]bool) int {
-	min := 0
+	smallest := 0
 	for n, ok := range passed {
-		if !ok && (min == 0 || n < min) {
-			min = n
+		if !ok && (smallest == 0 || n < smallest) {
+			smallest = n
 		}
 	}
-	return min
+	return smallest
 }

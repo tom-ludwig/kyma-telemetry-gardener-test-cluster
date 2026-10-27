@@ -210,7 +210,7 @@ func pipelineService(tmpl *corev1.Service, fault *appsv1.Deployment, s spec.RunS
 	svc.Labels = merge(svc.Labels, RunLabels(s))
 	svc.Spec.Selector = map[string]string{"app": DebugBackendName}
 	svc.Spec.Ports[0].Port = int32(DebugBackendPort)
-	svc.Spec.Ports[0].TargetPort = intstr.FromInt(DebugBackendPort)
+	svc.Spec.Ports[0].TargetPort = intstr.FromInt32(DebugBackendPort)
 	if s.Health != spec.Faulty || i != 0 {
 		return svc
 	}

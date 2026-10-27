@@ -35,6 +35,7 @@ spec:
             requests:
               cpu: 50m
               memory: 64Mi
+              ephemeral-storage: 64Mi
             limits:
               memory: 556Mi
           securityContext:
