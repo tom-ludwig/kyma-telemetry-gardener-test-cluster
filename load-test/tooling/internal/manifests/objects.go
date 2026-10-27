@@ -24,13 +24,16 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml gateway-service-monitor.yaml
+//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml gateway-service-monitor.yaml log-generator.yaml
 var manifestsFS embed.FS
 
 const (
 	LoadNamespace = "otel-load-test"
 	RunLabel      = "loadtest.kyma-project.io/run"
 	RoleLabel     = "load-test/role"
+
+	// LogGeneratorContainer is the container name in log-generator.yaml that LogPipelines read.
+	LogGeneratorContainer = "log-gen"
 
 	// items/s per telemetrygen worker, well below its measured ~1600/s ceiling
 	itemsPerWorker = 500
@@ -256,17 +259,68 @@ func FaultBackendService(s spec.RunSpec, ns string) (*corev1.Service, error) {
 	return svc, nil
 }
 
-// Generators: 1 Deployment per signal, each running a shell loop over all tenants.
+// Generators: per gateway signal 1 telemetrygen Deployment, per agent its own generator;
+// each runs a shell loop over all tenants.
 func Generators(s spec.RunSpec, duration time.Duration) ([]client.Object, error) {
 	var tmpl appsv1.Deployment
 	if err := readTemplate("generator.yaml", &tmpl); err != nil {
 		return nil, err
 	}
 	var objs []client.Object
-	for _, sig := range spec.Signals {
-		objs = append(objs, generator(&tmpl, s, sig, duration))
+	for _, u := range s.Units() {
+		if u.Component == spec.ComponentGateway {
+			objs = append(objs, generator(&tmpl, s, u.Signal, duration))
+			continue
+		}
+		gen, err := agentGenerators(s, u)
+		if err != nil {
+			return nil, err
+		}
+		objs = append(objs, gen...)
 	}
 	return objs, nil
+}
+
+// agentGeneratorTemplates holds the generator Deployment of each node agent; it runs on the
+// collector node, because an agent only collects from its own node.
+var agentGeneratorTemplates = map[string]string{
+	spec.ComponentLogAgent: "log-generator.yaml",
+}
+
+// AgentGeneratorImage returns the generator image of a node agent, for the result record.
+func AgentGeneratorImage(component string) (string, error) {
+	var d appsv1.Deployment
+	if err := readTemplate(agentGeneratorTemplates[component], &d); err != nil {
+		return "", err
+	}
+	return d.Spec.Template.Spec.Containers[0].Image, nil
+}
+
+// agentGenerators returns the generator objects of one node agent with the run label set.
+func agentGenerators(s spec.RunSpec, u spec.Unit) ([]client.Object, error) {
+	path, ok := agentGeneratorTemplates[u.Component]
+	if !ok {
+		return nil, fmt.Errorf("no generator for %s", u.Component)
+	}
+	var d appsv1.Deployment
+	if err := readTemplate(path, &d); err != nil {
+		return nil, err
+	}
+	d.Labels = merge(d.Labels, RunLabels(s))
+	d.Spec.Template.Labels = merge(d.Spec.Template.Labels, RunLabels(s))
+	d.Spec.Template.Spec.Containers[0].Args = []string{logAgentScript(s, u.Signal)}
+	return []client.Object{&d}, nil
+}
+
+// logAgentScript launches one stdout-log-generator per tenant. Each writes JSON lines of
+// BodyBytes with its tenant as a field, which the log agent parses into log attributes.
+// The generator has no duration flag; the tool deletes the Deployment when the load stops.
+func logAgentScript(s spec.RunSpec, sig spec.Signal) string {
+	return fmt.Sprintf(`for i in $(seq 0 %d); do
+  stdout-log-generator --format=json -b %d -r %d -f "tenant=$(printf 'tenant-%%03d' $i)" &
+done
+wait
+`, s.Tenants-1, sig.BodyBytes, s.TenantRate(sig))
 }
 
 // generatorEndpoint is the OTLP gRPC endpoint generators send to: our collector for otel,

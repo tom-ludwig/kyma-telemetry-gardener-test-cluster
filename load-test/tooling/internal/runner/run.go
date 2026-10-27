@@ -148,7 +148,16 @@ func (r *Runner) newRecord(s spec.RunSpec, stats manifests.ConfigStats, startup 
 		rec.Setup.Generator.LogBodyBytes = max(rec.Setup.Generator.LogBodyBytes, u.Signal.BodyBytes)
 		if u.Component == spec.ComponentGateway {
 			rec.Setup.Generator.WorkersPerTenant[u.Key()] = manifests.Workers(s.TenantRate(u.Signal))
+			continue
 		}
+		image, err := manifests.AgentGeneratorImage(u.Component)
+		if err != nil {
+			return nil, err
+		}
+		if rec.Setup.Generator.AgentImages == nil {
+			rec.Setup.Generator.AgentImages = map[string]string{}
+		}
+		rec.Setup.Generator.AgentImages[u.Component] = image
 	}
 	if s.Health != spec.Faulty {
 		return rec, nil
@@ -265,16 +274,22 @@ func (r *Runner) applyTM(ctx context.Context, s spec.RunSpec) error {
 		}
 		objs = append(objs, fault, faultSvc)
 	}
-	sm, err := manifests.GatewayServiceMonitor()
-	if err != nil {
-		return err
+	for _, c := range s.Components() {
+		sm, err := manifests.ServiceMonitor(spec.TMApps[c])
+		if err != nil {
+			return err
+		}
+		objs = append(objs, sm)
 	}
-	objs = append(objs, sm)
 	return r.create(ctx, append(objs, pipelines...))
 }
 
-// waitPipelines waits until every pipeline CR reports ConfigurationGenerated=True and the
-// debug backend is Ready, so the gateway has the run's config before load starts.
+// agentOf is the node agent TM starts for a pipeline kind; its pipelines also wait for AgentHealthy.
+var agentOf = map[string]string{"LogPipeline": spec.ComponentLogAgent, "MetricPipeline": spec.ComponentMetricAgent}
+
+// waitPipelines waits until every pipeline CR reports ConfigurationGenerated=True (and
+// AgentHealthy=True when an agent under test serves it), so TM has the run's config
+// before load starts.
 func (r *Runner) waitPipelines(ctx context.Context, s spec.RunSpec) error {
 	pipelines, err := manifests.TMPipelineObjects(s)
 	if err != nil {
@@ -288,6 +303,9 @@ func (r *Runner) waitPipelines(ctx context.Context, s spec.RunSpec) error {
 				return false, client.IgnoreNotFound(err)
 			}
 			if !conditionTrue(u, "ConfigurationGenerated") {
+				return false, nil
+			}
+			if s.Has(agentOf[u.GetKind()]) && !conditionTrue(u, "AgentHealthy") {
 				return false, nil
 			}
 		}

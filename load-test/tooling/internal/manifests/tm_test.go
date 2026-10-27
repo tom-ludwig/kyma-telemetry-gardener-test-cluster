@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +46,65 @@ func TestTMPipelineObjects(t *testing.T) {
 	for k, n := range want {
 		if kinds[k] != n {
 			t.Errorf("%s: got %d, want %d", k, kinds[k], n)
+		}
+	}
+}
+
+func TestTMLogAgentPipeline(t *testing.T) {
+	s := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentLogAgent, Shape: spec.ShapeF1, Tenants: 2, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
+	objs, err := TMPipelineObjects(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objs) != 2 {
+		t.Fatalf("got %d pipelines, want 2 LogPipelines only", len(objs))
+	}
+	u := objs[1].(*unstructured.Unstructured)
+	if u.GetKind() != "LogPipeline" {
+		t.Fatalf("kind %s", u.GetKind())
+	}
+	filter, _, _ := unstructured.NestedSlice(u.Object, "spec", "filter")
+	if cond := filter[0].(map[string]any)["conditions"].([]any)[0]; cond != `attributes["tenant"] != "tenant-001"` {
+		t.Errorf("filter %q", cond)
+	}
+	otlp, _, _ := unstructured.NestedBool(u.Object, "spec", "input", "otlp", "enabled")
+	runtime, _, _ := unstructured.NestedBool(u.Object, "spec", "input", "runtime", "enabled")
+	containers, _, _ := unstructured.NestedSlice(u.Object, "spec", "input", "runtime", "containers", "include")
+	if otlp || !runtime || len(containers) != 1 || containers[0] != LogGeneratorContainer {
+		t.Errorf("input %v", u.Object["spec"].(map[string]any)["input"])
+	}
+}
+
+func TestServiceMonitorPerComponent(t *testing.T) {
+	sm, err := ServiceMonitor("telemetry-log-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := sm.(*unstructured.Unstructured)
+	sel, _, _ := unstructured.NestedStringMap(u.Object, "spec", "selector", "matchLabels")
+	if u.GetName() != "telemetry-log-agent" || sel["app.kubernetes.io/name"] != "telemetry-log-agent" {
+		t.Errorf("name %q selector %v", u.GetName(), sel)
+	}
+}
+
+func TestLogAgentGenerator(t *testing.T) {
+	s := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentLogAgent, Shape: spec.ShapeF1, Tenants: 3, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
+	objs, err := Generators(s, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objs) != 1 {
+		t.Fatalf("got %d generators, want 1", len(objs))
+	}
+	d := objs[0].(*appsv1.Deployment)
+	if d.Spec.Template.Spec.NodeSelector[RoleLabel] != "collector" || d.Spec.Template.Labels[RunLabel] != s.ID() {
+		t.Errorf("placement %v labels %v", d.Spec.Template.Spec.NodeSelector, d.Spec.Template.Labels)
+	}
+	script := d.Spec.Template.Spec.Containers[0].Args[0]
+	logs := spec.Signals[2]
+	for _, want := range []string{"seq 0 2", fmt.Sprintf("-b %d -r %d", logs.BodyBytes, s.TenantRate(logs)), `"tenant=$(printf 'tenant-%03d' $i)"`} {
+		if !strings.Contains(script, want) {
+			t.Errorf("script lacks %q:\n%s", want, script)
 		}
 	}
 }

@@ -1,0 +1,42 @@
+# stdout-log-generator template for the log agent. Per run the tool creates this Deployment
+# once; the container runs a shell loop spawning one generator per tenant.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gen-log-agent
+  namespace: otel-load-test
+  labels:
+    app: gen-log-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gen-log-agent
+  template:
+    metadata:
+      labels:
+        app: gen-log-agent
+    spec:
+      automountServiceAccountToken: false
+      # The agent only reads log files of its own node.
+      nodeSelector:
+        load-test/role: collector
+      tolerations:
+        - key: load-test/role
+          operator: Equal
+          value: collector
+          effect: NoSchedule
+      containers:
+        - name: log-gen # LogPipelines include only this container
+          image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/stdout-log-generator:v20261023-ed61e465
+          command: ["/bin/sh", "-c"]
+          args:
+            - placeholder
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+              # kubelet counts the container's rotated log files (100Mi × 5) against the pod
+              ephemeral-storage: 512Mi
+            limits:
+              memory: 2Gi
