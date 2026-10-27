@@ -2,8 +2,8 @@ name: stdout-log-generator image
 
 on:
   push:
-    branches: [main]
-    paths: ["load-test/stdout-log-generator/**"]
+    branches: [main, feat/tm-agent-load-test]
+    paths: ["load-test/stdout-log-generator/**", ".github/workflows/stdout-log-generator-image.yaml"]
   workflow_dispatch:
 
 permissions:
