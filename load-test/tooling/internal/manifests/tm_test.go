@@ -7,6 +7,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/tom-ludwig/kyma-telemetry-gardener-test-cluster/load-test/tooling/internal/spec"
@@ -106,6 +107,54 @@ func TestLogAgentGenerator(t *testing.T) {
 		if !strings.Contains(script, want) {
 			t.Errorf("script lacks %q:\n%s", want, script)
 		}
+	}
+}
+
+func TestTMMetricAgentPipeline(t *testing.T) {
+	s := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentMetricAgent, Shape: spec.ShapeF1, Tenants: 2, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
+	objs, err := TMPipelineObjects(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objs) != 2 {
+		t.Fatalf("got %d pipelines, want 2 MetricPipelines only", len(objs))
+	}
+	u := objs[1].(*unstructured.Unstructured)
+	filter, _, _ := unstructured.NestedSlice(u.Object, "spec", "filter")
+	if cond := filter[0].(map[string]any)["conditions"].([]any)[0]; cond != `resource.attributes["server.port"] != "9002"` {
+		t.Errorf("filter %q", cond)
+	}
+	prom, _, _ := unstructured.NestedBool(u.Object, "spec", "input", "prometheus", "enabled")
+	otlp, _, _ := unstructured.NestedBool(u.Object, "spec", "input", "otlp", "enabled")
+	if !prom || otlp {
+		t.Errorf("input %v", u.Object["spec"].(map[string]any)["input"])
+	}
+}
+
+func TestMetricAgentGenerator(t *testing.T) {
+	s := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentMetricAgent, Shape: spec.ShapeF1, Tenants: 3, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
+	objs, err := Generators(s, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1 Deployment + 1 Service per tenant
+	if len(objs) != 4 {
+		t.Fatalf("got %d objects, want 4", len(objs))
+	}
+	d := objs[0].(*appsv1.Deployment)
+	if len(d.Spec.Template.Annotations) != 0 {
+		t.Errorf("generator pod must not be annotated: %v", d.Spec.Template.Annotations)
+	}
+	// 9000 dp/s over 3 tenants, 30 s scrapes, 10 gauges: 9000 series per tenant
+	script := d.Spec.Template.Spec.Containers[0].Args[0]
+	for _, want := range []string{"seq 0 2", "--port=$((9001 + i))", "--series-count=9000", "--series-interval=0"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("script lacks %q:\n%s", want, script)
+		}
+	}
+	svc := objs[3].(*corev1.Service)
+	if svc.Annotations["prometheus.io/port"] != "9003" || svc.Spec.Selector["app"] != "gen-metric-agent" || svc.Labels[RunLabel] != s.ID() {
+		t.Errorf("service %s: annotations %v selector %v labels %v", svc.Name, svc.Annotations, svc.Spec.Selector, svc.Labels)
 	}
 }
 

@@ -85,10 +85,14 @@ func sourcesOf(s spec.RunSpec, sig spec.Signal) []string {
 
 // tenantCondition is true for items that are not tenant i's, by where each source puts the
 // tenant: the gateway's generators on the resource, the log generator as a JSON field the log
-// agent parses into log attributes.
+// agent parses into log attributes, and the metric generator as its scrape port, which the
+// prometheus receiver sets as the string resource attribute server.port.
 func tenantCondition(source string, i int) string {
 	if source == spec.ComponentLogAgent {
 		return fmt.Sprintf(`attributes["tenant"] != %q`, spec.TenantID(i))
+	}
+	if source == spec.ComponentMetricAgent {
+		return fmt.Sprintf(`resource.attributes["server.port"] != "%d"`, spec.MetricPortBase+i)
 	}
 	return fmt.Sprintf(`resource.attributes["tenant"] != %q`, spec.TenantID(i))
 }
@@ -113,8 +117,17 @@ func tmPipeline(s spec.RunSpec, sig spec.Signal, kind string, i int, endpoint st
 			},
 		},
 	}
-	// Only LogPipeline needs an input block here: OTLP for the gateway, the runtime input for
-	// the log agent, reading only the log generator's container.
+	// MetricPipeline for the metric agent: only the prometheus input, only the generator namespace.
+	if kind == "MetricPipeline" && slices.Contains(sources, spec.ComponentMetricAgent) {
+		pipelineSpec["input"] = map[string]any{
+			"prometheus": map[string]any{"enabled": true, "namespaces": map[string]any{"include": []any{LoadNamespace}}},
+			"runtime":    map[string]any{"enabled": false},
+			"istio":      map[string]any{"enabled": false},
+			"otlp":       map[string]any{"enabled": slices.Contains(sources, spec.ComponentGateway)},
+		}
+	}
+	// LogPipeline: OTLP for the gateway, the runtime input for the log agent, reading only the
+	// log generator's container.
 	if kind == "LogPipeline" {
 		pipelineSpec["input"] = map[string]any{
 			"otlp":    map[string]any{"enabled": slices.Contains(sources, spec.ComponentGateway)},

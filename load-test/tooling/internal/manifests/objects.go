@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml gateway-service-monitor.yaml log-generator.yaml
+//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml gateway-service-monitor.yaml log-generator.yaml metric-generator.yaml
 var manifestsFS embed.FS
 
 const (
@@ -284,8 +284,12 @@ func Generators(s spec.RunSpec, duration time.Duration) ([]client.Object, error)
 // agentGeneratorTemplates holds the generator Deployment of each node agent; it runs on the
 // collector node, because an agent only collects from its own node.
 var agentGeneratorTemplates = map[string]string{
-	spec.ComponentLogAgent: "log-generator.yaml",
+	spec.ComponentLogAgent:    "log-generator.yaml",
+	spec.ComponentMetricAgent: "metric-generator.yaml",
 }
+
+// gaugesPerTenant is the avalanche metric count; the series per metric set the volume.
+const gaugesPerTenant = 10
 
 // AgentGeneratorImage returns the generator image of a node agent, for the result record.
 func AgentGeneratorImage(component string) (string, error) {
@@ -308,8 +312,53 @@ func agentGenerators(s spec.RunSpec, u spec.Unit) ([]client.Object, error) {
 	}
 	d.Labels = merge(d.Labels, RunLabels(s))
 	d.Spec.Template.Labels = merge(d.Spec.Template.Labels, RunLabels(s))
-	d.Spec.Template.Spec.Containers[0].Args = []string{logAgentScript(s, u.Signal)}
-	return []client.Object{&d}, nil
+	if u.Component == spec.ComponentLogAgent {
+		d.Spec.Template.Spec.Containers[0].Args = []string{logAgentScript(s, u.Signal)}
+		return []client.Object{&d}, nil
+	}
+	d.Spec.Template.Spec.Containers[0].Args = []string{metricAgentScript(s, u.Signal)}
+	return append([]client.Object{&d}, metricAgentServices(s, d.Spec.Selector.MatchLabels)...), nil
+}
+
+// metricAgentScript launches one avalanche per tenant on port MetricPortBase+i. Each serves
+// gauges only with fixed series, so one scrape per interval yields the tenant's data points/s.
+func metricAgentScript(s spec.RunSpec, sig spec.Signal) string {
+	series := max(1, s.TenantRate(sig)*spec.ScrapeIntervalS/gaugesPerTenant)
+	return fmt.Sprintf(`for i in $(seq 0 %d); do
+  avalanche --port=$((%d + i)) \
+    --gauge-metric-count=%d --counter-metric-count=0 --histogram-metric-count=0 \
+    --native-histogram-metric-count=0 --summary-metric-count=0 \
+    --series-count=%d --label-count=2 \
+    --series-interval=0 --metric-interval=0 --series-change-interval=0 &
+done
+wait
+`, s.Tenants-1, spec.MetricPortBase, gaugesPerTenant, series)
+}
+
+// metricAgentServices gives every tenant's avalanche its own scrape target: one Service per
+// tenant on the generator pod, annotated with that tenant's port.
+func metricAgentServices(s spec.RunSpec, selector map[string]string) []client.Object {
+	var objs []client.Object
+	for i := range s.Tenants {
+		port := int32(spec.MetricPortBase + i)
+		objs = append(objs, &corev1.Service{
+			TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("gen-metric-agent-%s", spec.PipelineID(i)),
+				Namespace: LoadNamespace,
+				Labels:    RunLabels(s),
+				Annotations: map[string]string{
+					"prometheus.io/scrape": "true",
+					"prometheus.io/port":   fmt.Sprint(port),
+				},
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: selector,
+				Ports:    []corev1.ServicePort{{Name: "metrics", Port: port, TargetPort: intstr.FromInt32(port)}},
+			},
+		})
+	}
+	return objs
 }
 
 // logAgentScript launches one stdout-log-generator per tenant. Each writes JSON lines of
