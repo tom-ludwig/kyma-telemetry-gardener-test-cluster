@@ -89,7 +89,7 @@ func sourcesOf(s spec.RunSpec, sig spec.Signal) []string {
 // prometheus receiver sets as the string resource attribute server.port.
 func tenantCondition(source string, i int) string {
 	if source == spec.ComponentLogAgent {
-		return fmt.Sprintf(`attributes["tenant"] != %q`, spec.TenantID(i))
+		return fmt.Sprintf(`log.attributes["tenant"] != %q`, spec.TenantID(i))
 	}
 	if source == spec.ComponentMetricAgent {
 		return fmt.Sprintf(`resource.attributes["server.port"] != "%d"`, spec.MetricPortBase+i)

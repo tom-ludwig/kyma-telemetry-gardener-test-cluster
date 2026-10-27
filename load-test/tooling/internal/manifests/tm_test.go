@@ -65,7 +65,7 @@ func TestTMLogAgentPipeline(t *testing.T) {
 		t.Fatalf("kind %s", u.GetKind())
 	}
 	filter, _, _ := unstructured.NestedSlice(u.Object, "spec", "filter")
-	if cond := filter[0].(map[string]any)["conditions"].([]any)[0]; cond != `attributes["tenant"] != "tenant-001"` {
+	if cond := filter[0].(map[string]any)["conditions"].([]any)[0]; cond != `log.attributes["tenant"] != "tenant-001"` {
 		t.Errorf("filter %q", cond)
 	}
 	otlp, _, _ := unstructured.NestedBool(u.Object, "spec", "input", "otlp", "enabled")
@@ -169,7 +169,7 @@ func TestTMAllPipelines(t *testing.T) {
 		t.Fatalf("got %d pipelines, want 6", len(objs))
 	}
 	want := map[string]string{
-		"logs-p-000":    `resource.attributes["tenant"] != "tenant-000" and attributes["tenant"] != "tenant-000"`,
+		"logs-p-000":    `resource.attributes["tenant"] != "tenant-000" and log.attributes["tenant"] != "tenant-000"`,
 		"metrics-p-000": `resource.attributes["tenant"] != "tenant-000" and resource.attributes["server.port"] != "9001"`,
 		"traces-p-000":  `resource.attributes["tenant"] != "tenant-000"`,
 	}
