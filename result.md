@@ -175,4 +175,105 @@ xychart-beta
 - **Fan-out causes severe node saturation and data loss**: Duplicating transform processors spawns 1,404 processor instances at 100 tenants. Average CPU shoots to 3.47 cores (p95 3.98 cores, reaching 100% of node capacity), internal queues fill up completely (`queue_util_max 1.0`), and the collector drops 41% of logs and 47% of metrics.
 - **Memory stays contained in Routing**: Centralized routing caps peak RSS memory at 972 MiB at 100 tenants, compared to 1,878 MiB in Fan-Out.
 
-### Failure Results
+### Performance Results: Current Telemetry Manager Implementation (Target: tm)
+
+To assess how Kyma's current Telemetry Manager behaves if the 5-pipeline limit is lifted without architectural changes, load tests targeted the live Telemetry Manager-managed collector (`target: tm`, Fan-Out Shape `F1`) under standard 25k signals/s traffic (6,000 logs/s, 9,000 metrics/s, and 10,000 traces/s) across 10-minute steady-state runs on an `n1-standard-4` node:
+
+| Tenants | Logs rx/s | Metrics rx/s | Traces rx/s | Refused Requests | CPU avg | CPU p95 | RSS max | Status |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 5 994 | 8 992 | 9 992 | 0 | 0.30 | 0.37 | 167 MiB | 100% (Valid ✓) |
+| 3 | 5 993 | 8 995 | 9 994 | 0 | 0.38 | 0.46 | 186 MiB | 100% (Valid ✓) |
+| 5 | 5 996 | 8 997 | 9 994 | 0 | 0.45 | 0.51 | 211 MiB | 100% (Valid ✓) |
+| 10 | 5 998 | 8 997 | 9 993 | 0 | 0.61 | 0.72 | 248 MiB | 100% (Valid ✓) |
+| 20 | 5 977 | 8 961 | 9 978 | 0 | 1.06 | 1.27 | 284 MiB | 100% (Valid ✓) |
+| 30 | 1 872 | 2 801 | 8 719 | 742 513 ⚠ | 2.43 | 2.71 | 254 MiB | Degraded (~31% logs/metrics) ✗ |
+| 50 | 74 | 138 | 718 | 1 577 204 ⚠ | 2.78 | 3.19 | 281 MiB | **Severe drop** (<2% logs/metrics) ✗ |
+| 100 | 153 | 256 | 513 | 2 989 680 ⚠ | 4.70 | 5.69 | 483 MiB | **Complete collapse** (>2.9M refused) ✗ |
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626"
+---
+xychart-beta
+    title "Telemetry Manager (F1): CPU Avg (Cores) vs Tenants"
+    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
+    y-axis "CPU Cores" 0 --> 5
+    bar [0.30, 0.38, 0.45, 0.61, 1.06, 2.43, 2.78, 4.70]
+```
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626"
+---
+xychart-beta
+    title "Telemetry Manager (F1): Memory Growth (RSS Max in MiB)"
+    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
+    y-axis "RSS Max (MiB)" 150 --> 600
+    bar [167, 186, 211, 248, 284, 254, 281, 483]
+```
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626"
+---
+xychart-beta
+    title "Telemetry Manager (F1): Delivered Throughput (% of Offered 25k/s)"
+    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
+    y-axis "Delivered %" 0 --> 100
+    bar [100, 100, 100, 100, 100, 54, 4, 4]
+```
+
+#### Key Takeaways (Current Telemetry Manager)
+
+- **Manageable up to 20 tenants**: Between 1 and 20 tenants, the manager sustains 100% throughput with CPU usage scaling progressively from 0.30 to 1.06 cores and memory from 167 to 284 MiB.
+- **Cliff at 30 tenants**: Beyond 20 tenants, duplicated pipeline processing causes connection refusals and queue starvation, dropping throughput to ~31% and triggering hard limit `H4`.
+- **Complete breakdown at scale**: At 50 and 100 tenants, the collector is overwhelmed with millions of refused requests, driving CPU consumption to 4.70 cores avg (5.69 cores p95, heavily throttled on a 3.92 core node) and delivering less than 3% of telemetry. This confirms that lifting the pipeline limit requires shifting to the unified routing architecture.
+
+### Failure & Tenant Isolation Results
+
+To evaluate resilience against "noisy neighbor" failures and backpressure, fault-injection tests targeted pipeline `p-000` across all three signal types. The faulty backend returned **70% HTTP 503 errors** with artificial delays (1,000ms delay on both 503 and 200 responses) under continuous 25k signals/s traffic with full gateway transformations enabled.
+
+Detailed raw reports are available in [`results-transforms-routing-faulty.md`](./load-test/results/results-transforms-routing-faulty.md) and [`results-transforms-fan-out-faulty.md`](./load-test/results/results-transforms-fan-out-faulty.md).
+
+#### 1. Tenant Isolation Under Downstream Outage
+
+Testing verified whether a failing backend causes head-of-line blocking or backpressure that spills into neighboring healthy tenants:
+
+| Tenants | Architecture | Healthy Delivered (Logs · Metrics · Traces) | Faulty `p-000` Exported/s | Send Failures | Enqueue Failures | Queue Util Max | CPU avg (p95) |
+|---|---|---|---|---|---|---|---|
+| 2 | **Routing** | 100% · 100% · 100% | 167 · 149 · 150 | 0 | 0 | 0.8% | 0.50 (0.57) |
+| 2 | **Fan-Out** | 100% · 100% · 100% | 165 · 143 · 158 | 0 | 0 | 0.8% | 0.56 (0.63) |
+| 20 | **Routing** | 99.9% · 100% · 99.9% | 148 · 148 · 157 | 0 | 0 | 8.3% | 0.64 (0.78) |
+| 20 | **Fan-Out** | 100% · 99.9% · 100% | 144 · 160 · 143 | 0 | 0 | 8.3% | 1.36 (1.62) |
+| 50 | **Routing** | 100% · 99.9% · 99.8% | 55 · 58 · 68 | 0 | 0 | 20.0% | 0.61 (0.69) |
+| 50 | **Fan-Out** | 99.8% · 100% · 99.8% | 62 · 47 · 62 | 0 | 0 | 20.0% | 2.68 (3.23) |
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#dc2626, #16a34a"
+---
+xychart-beta
+    title "CPU Avg (Cores) During Backend Fault: Fan-Out vs. Routing"
+    x-axis ["2T", "20T", "50T"]
+    y-axis "CPU Cores" 0 --> 3.5
+    bar "Fan-Out" [0.56, 1.36, 2.68]
+    bar "Routing" [0.50, 0.64, 0.61]
+```
+
+#### Key Takeaways (Fault Isolation)
+
+- **Dedicated exporter queues isolate failing tenants**: In both architectures, the internal exporter queue for `p-000` isolated the retry backoff and 503 delays without blocking global pipelines. Maximum queue utilization peaked at 20% on the faulty pipeline, causing zero enqueue or send errors for healthy tenants.
+- **Healthy tenant throughput remained at 100%**: Unaffected tenants experienced zero dropped signals or degraded throughput despite the persistent outage on tenant `p-000`.
+- **Routing shields against resource spikes during outages**: Routing CPU consumption remained completely stable at ~0.61 cores at 50 tenants. While Fan-Out also isolated tenant queues successfully, its duplicated processors still incurred high CPU overhead (2.68 cores avg / 3.23 cores p95).
