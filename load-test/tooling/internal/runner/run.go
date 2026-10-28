@@ -29,9 +29,10 @@ type Runner struct {
 	done                     map[string]*result.Record // records of this process by run ID
 	runFn                    func(context.Context, spec.RunSpec) (*result.Record, error)
 	skipPreflight            bool
+	nodeSelector             map[string]string
 }
 
-func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration, args []string, skipPreflight bool) (*Runner, error) {
+func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration, args []string, skipPreflight bool, nodeSelector map[string]string) (*Runner, error) {
 	cpu, memory, err := manifests.GeneratorRequests()
 	if err != nil {
 		return nil, err
@@ -39,7 +40,7 @@ func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration,
 	r := &Runner{
 		k: k, p: p, warmup: warmup, steady: steady, cooldown: cooldown, args: args,
 		genCPU: cpu, genMemory: memory, done: map[string]*result.Record{},
-		skipPreflight: skipPreflight,
+		skipPreflight: skipPreflight, nodeSelector: nodeSelector,
 	}
 	r.runFn = r.Run
 	return r, nil
@@ -82,7 +83,7 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 		}
 	}
 
-	gens, err := manifests.Generators(s, r.warmup+r.steady)
+	gens, err := manifests.Generators(s, r.warmup+r.steady, r.nodeSelector)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +213,7 @@ func waitOrStop(ctx context.Context, stop <-chan string, t time.Time) string {
 // fill queries vm-single for all record values and evaluates the limits.
 func (r *Runner) fill(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, rec *result.Record, watches map[string]*collectorWatch, drain *float64) error {
 	for _, c := range s.Components() {
-		collector, err := r.p.QueryCollector(ctx, s, c, w)
+		collector, err := r.p.QueryCollector(ctx, s, c, n.agent, w)
 		if err != nil {
 			return err
 		}
@@ -344,7 +345,7 @@ func (r *Runner) applyCollector(ctx context.Context, s spec.RunSpec, configParts
 		}
 		objs = append(objs, fault)
 	}
-	collector, err := manifests.CollectorObjects(s, configParts)
+	collector, err := manifests.CollectorObjects(s, configParts, r.nodeSelector)
 	if err != nil {
 		return err
 	}

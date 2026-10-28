@@ -18,14 +18,6 @@ spec:
         app: gen-log-agent
     spec:
       automountServiceAccountToken: false
-      # The agent only reads log files of its own node.
-      nodeSelector:
-        load-test/role: collector
-      tolerations:
-        - key: load-test/role
-          operator: Equal
-          value: collector
-          effect: NoSchedule
       containers:
         - name: log-gen # LogPipelines include only this container
           image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/stdout-log-generator:v20261023-ed61e465

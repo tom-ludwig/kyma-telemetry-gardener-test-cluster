@@ -25,14 +25,6 @@ spec:
         app.kubernetes.io/name: otelcol
     spec:
       serviceAccountName: otelcol
-      # One pod on the tainted collector node instead of TM's tolerate-all
-      nodeSelector:
-        load-test/role: collector
-      tolerations:
-        - key: load-test/role
-          operator: Equal
-          value: collector
-          effect: NoSchedule
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -95,7 +87,6 @@ spec:
             # one configMap source per part, set by the tool
             sources: []
 ---
-# Without TM's internalTrafficPolicy: Local, because the generators run on another node
 apiVersion: v1
 kind: Service
 metadata:

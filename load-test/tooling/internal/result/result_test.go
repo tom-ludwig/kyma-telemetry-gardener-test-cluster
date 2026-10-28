@@ -36,12 +36,12 @@ func TestSelectorsForTarget(t *testing.T) {
 	}
 }
 
-// Agents run on every node; only the collector-node agent's cadvisor series may count.
-func TestContainerSelAgentsOnCollectorNode(t *testing.T) {
-	if got := containerSelFor(spec.TargetTM, spec.ComponentMetricAgent); !strings.Contains(got, `load_test_role="collector"`) {
+// Agents run on every node; only the agent-node agent's cadvisor series may count.
+func TestContainerSelAgentsOnAgentNode(t *testing.T) {
+	if got := containerSelFor(spec.TargetTM, spec.ComponentMetricAgent, "n1"); !strings.Contains(got, `node="n1"`) {
 		t.Errorf("metric agent container selector %q", got)
 	}
-	if got := containerSelFor(spec.TargetTM, spec.ComponentGateway); strings.Contains(got, "load_test_role") {
+	if got := containerSelFor(spec.TargetTM, spec.ComponentGateway, "n1"); strings.Contains(got, "node=") {
 		t.Errorf("gateway container selector must cover all gateway pods: %q", got)
 	}
 }

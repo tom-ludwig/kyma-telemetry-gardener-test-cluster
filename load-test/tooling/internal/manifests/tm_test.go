@@ -90,7 +90,7 @@ func TestServiceMonitorPerComponent(t *testing.T) {
 
 func TestLogAgentGenerator(t *testing.T) {
 	s := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentLogAgent, Shape: spec.ShapeF1, Tenants: 3, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
-	objs, err := Generators(s, time.Minute)
+	objs, err := Generators(s, time.Minute, map[string]string{"kubernetes.io/hostname": "n1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestLogAgentGenerator(t *testing.T) {
 		t.Fatalf("got %d generators, want 1", len(objs))
 	}
 	d := objs[0].(*appsv1.Deployment)
-	if d.Spec.Template.Spec.NodeSelector[RoleLabel] != "collector" || d.Spec.Template.Labels[RunLabel] != s.ID() {
+	if d.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"] != "n1" || d.Spec.Template.Labels[RunLabel] != s.ID() {
 		t.Errorf("placement %v labels %v", d.Spec.Template.Spec.NodeSelector, d.Spec.Template.Labels)
 	}
 	script := d.Spec.Template.Spec.Containers[0].Args[0]
@@ -133,7 +133,7 @@ func TestTMMetricAgentPipeline(t *testing.T) {
 
 func TestMetricAgentGenerator(t *testing.T) {
 	s := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentMetricAgent, Shape: spec.ShapeF1, Tenants: 3, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
-	objs, err := Generators(s, time.Minute)
+	objs, err := Generators(s, time.Minute, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestTMAllPipelines(t *testing.T) {
 			t.Errorf("%s: OTLP input off in a combined run", u.GetName())
 		}
 	}
-	gens, err := Generators(s, time.Minute)
+	gens, err := Generators(s, time.Minute, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestTMAllPipelines(t *testing.T) {
 
 func TestGeneratorEndpointTM(t *testing.T) {
 	s := spec.RunSpec{Target: spec.TargetTM, Shape: spec.ShapeF1, Tenants: 1, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
-	objs, err := Generators(s, time.Minute)
+	objs, err := Generators(s, time.Minute, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

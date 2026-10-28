@@ -39,8 +39,8 @@ func collectorSelFor(target, component string) string {
 
 // containerSelFor returns the container-scoped selector for cadvisor memory/CPU series,
 // excluding sidecars that share the pod. Agents run on every node; only the one on the
-// collector node gets load, so their cadvisor series are narrowed to that node.
-func containerSelFor(target, component string) string {
+// agent node gets load, so their cadvisor series are narrowed to that node.
+func containerSelFor(target, component, agentNode string) string {
 	if target != spec.TargetTM {
 		return collectorSel
 	}
@@ -48,7 +48,7 @@ func containerSelFor(target, component string) string {
 	if component == spec.ComponentGateway {
 		return sel
 	}
-	return sel + `,load_test_role="collector"`
+	return sel + fmt.Sprintf(`,node=%q`, agentNode)
 }
 
 // ToolCommit is the git commit the tool was built from, set by the image build (-ldflags -X).
@@ -327,10 +327,10 @@ func (p Prom) QuerySignal(ctx context.Context, s spec.RunSpec, u spec.Unit, w Wi
 	return r, nil
 }
 
-func (p Prom) QueryCollector(ctx context.Context, s spec.RunSpec, component string, w Window) (CollectorResult, error) {
+func (p Prom) QueryCollector(ctx context.Context, s spec.RunSpec, component, agentNode string, w Window) (CollectorResult, error) {
 	run := fmt.Sprintf(`%s=%q`, RunPromLabel, s.ID())
 	cSel := collectorSelFor(s.Target, component)
-	ctSel := containerSelFor(s.Target, component)
+	ctSel := containerSelFor(s.Target, component, agentNode)
 	W, at := w.promRange(), w.SteadyEnd
 	const mib = 1 << 20
 	var r CollectorResult
@@ -386,7 +386,7 @@ func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Rec
 		if s.Target != spec.TargetTM || c == spec.ComponentGateway {
 			continue
 		}
-		ct := containerSelFor(s.Target, c)
+		ct := containerSelFor(s.Target, c, rec.Env.CollectorNode.Name)
 		held = append(held, struct{ id, q string }{"S3:" + c, fmt.Sprintf(`max(container_memory_working_set_bytes{%[1]s} / container_spec_memory_limit_bytes{%[1]s}) > 0.8`, ct)})
 	}
 	for _, u := range s.Units() {

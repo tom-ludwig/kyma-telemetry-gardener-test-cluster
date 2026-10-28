@@ -26,9 +26,9 @@ const (
 )
 
 type nodes struct {
-	collector string
-	load      []string
-	env       result.Env
+	load  []string
+	agent string // node whose agents get the load, picked by -node-selector
+	env   result.Env
 }
 
 // preflight stops a run before anything is created when the cluster cannot carry it.
@@ -66,12 +66,6 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 	}
 	loadAlloc, loadUsed := corev1.ResourceList{}, corev1.ResourceList{}
 	for _, node := range list.Items {
-		if node.Labels[manifests.RoleLabel] == "collector" {
-			n.collector = node.Name
-			n.env.CollectorNode = nodeInfo(node)
-			warnMemory(s, node)
-			continue
-		}
 		if node.Labels[manifests.RoleLabel] != "load" {
 			continue
 		}
@@ -84,16 +78,16 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 		}
 		add(loadUsed, used)
 	}
-	if n.collector == "" || len(n.load) == 0 {
-		return n, fmt.Errorf("need one node labelled %s=collector and at least one %s=load", manifests.RoleLabel, manifests.RoleLabel)
+	if err := r.agentNode(ctx, s, &n); err != nil {
+		return n, err
+	}
+	if len(n.load) == 0 {
+		return n, fmt.Errorf("need at least one node labelled %s=load", manifests.RoleLabel)
 	}
 	if r.skipPreflight {
 		return n, nil
 	}
-	if err := r.checkCollectorNodeFree(ctx, n.collector); err != nil {
-		return n, err
-	}
-	var pods int64 // 1 telemetrygen pod per gateway signal; agent generators run on the collector node
+	var pods int64 // 1 telemetrygen pod per gateway signal; agent generators are not counted
 	for _, u := range s.Units() {
 		if u.Component == spec.ComponentGateway {
 			pods++
@@ -122,37 +116,25 @@ func nodeInfo(node corev1.Node) result.NodeInfo {
 	}
 }
 
-func warnMemory(s spec.RunSpec, node corev1.Node) {
-	limit := resource.MustParse(fmt.Sprintf("%dMi", s.MemoryLimitMi()))
-	if limit.Cmp(*node.Status.Allocatable.Memory()) <= 0 {
-		return
+// agentNode picks the node of the agents under test: an agent only collects from its own
+// node, so the agent generators and the measured agent pod must share one node.
+func (r *Runner) agentNode(ctx context.Context, s spec.RunSpec, n *nodes) error {
+	if !s.Has(spec.ComponentLogAgent) && !s.Has(spec.ComponentMetricAgent) {
+		return nil
 	}
-	log.Printf("warning: collector memory limit %s is above node %s allocatable %s; node memory is the real limit",
-		limit.String(), node.Name, node.Status.Allocatable.Memory().String())
-}
-
-// checkCollectorNodeFree: only DaemonSet pods may run next to the collector.
-func (r *Runner) checkCollectorNodeFree(ctx context.Context, node string) error {
-	var pods corev1.PodList
-	if err := r.k.List(ctx, &pods, client.MatchingFields{"spec.nodeName": node}); err != nil {
+	if len(r.nodeSelector) == 0 {
+		return fmt.Errorf("-component %s needs -node-selector to place the agent generators", s.Component)
+	}
+	var list corev1.NodeList
+	if err := r.k.List(ctx, &list, client.MatchingLabels(r.nodeSelector)); err != nil {
 		return err
 	}
-	for _, p := range pods.Items {
-		if p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed || ownedByDaemonSet(p) {
-			continue
-		}
-		return fmt.Errorf("collector node %s runs %s/%s; only DaemonSet pods are allowed there", node, p.Namespace, p.Name)
+	if len(list.Items) != 1 {
+		return fmt.Errorf("-node-selector %v matches %d nodes, agent runs need exactly 1", r.nodeSelector, len(list.Items))
 	}
+	n.agent = list.Items[0].Name
+	n.env.CollectorNode = nodeInfo(list.Items[0])
 	return nil
-}
-
-func ownedByDaemonSet(p corev1.Pod) bool {
-	for _, o := range p.OwnerReferences {
-		if o.Kind == "DaemonSet" {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *Runner) requestsOn(ctx context.Context, node string) (corev1.ResourceList, error) {
@@ -288,7 +270,7 @@ func (r *Runner) observeCollectors(ctx context.Context, s spec.RunSpec, n nodes,
 
 // collectorPods selects the pods of one component under test. Managed TM components are
 // shared and long-lived; they are watched by their fixed labels. Agents run on every node,
-// only the one on the collector node gets load.
+// only the one on the agent node gets load.
 func collectorPods(s spec.RunSpec, component string, n nodes) []client.ListOption {
 	if s.Target != spec.TargetTM {
 		return []client.ListOption{client.InNamespace(manifests.LoadNamespace), client.MatchingLabels{"app.kubernetes.io/name": "otelcol"}}
@@ -297,7 +279,7 @@ func collectorPods(s spec.RunSpec, component string, n nodes) []client.ListOptio
 	if component == spec.ComponentGateway {
 		return opts
 	}
-	return append(opts, client.MatchingFields{"spec.nodeName": n.collector})
+	return append(opts, client.MatchingFields{"spec.nodeName": n.agent})
 }
 
 func (c *collectorWatch) observe(pods []corev1.Pod, now time.Time) {
@@ -344,7 +326,7 @@ func (r *Runner) checkGenerators(ctx context.Context, s spec.RunSpec, n nodes) s
 	if err != nil {
 		return ""
 	}
-	// Agent generators share the collector node; their rate is checked by a calibration run.
+	// Agent generators share the agent node; their rate is checked by a calibration run.
 	for _, u := range s.Units() {
 		if u.Component != spec.ComponentGateway {
 			continue

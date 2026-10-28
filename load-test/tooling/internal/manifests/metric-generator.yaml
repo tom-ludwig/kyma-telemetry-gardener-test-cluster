@@ -19,14 +19,6 @@ spec:
         app: gen-metric-agent
     spec:
       automountServiceAccountToken: false
-      # The agent only scrapes targets on its own node.
-      nodeSelector:
-        load-test/role: collector
-      tolerations:
-        - key: load-test/role
-          operator: Equal
-          value: collector
-          effect: NoSchedule
       containers:
         - name: metric-gen
           image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/avalanche:v0.7.0

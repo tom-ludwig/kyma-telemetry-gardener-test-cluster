@@ -13,7 +13,7 @@ import (
 func TestNewRecordInputs(t *testing.T) {
 	r := &Runner{warmup: time.Minute, steady: 3 * time.Minute, cooldown: time.Minute, args: []string{"-health=faulty", "-tenants=5"}}
 	s := spec.RunSpec{Shape: spec.ShapeF1, Tenants: 5, Load: spec.LoadA, Health: spec.Faulty, Rep: 1}
-	n := nodes{env: result.Env{CollectorNode: result.NodeInfo{Name: "a", CPU: 3.92}}}
+	n := nodes{env: result.Env{LoadNodes: []result.NodeInfo{{Name: "a", CPU: 3.92}}}}
 	rec, err := r.newRecord(s, manifests.ConfigStats{}, 0, result.Window{}, n)
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +36,7 @@ func TestNewRecordInputs(t *testing.T) {
 	if rec.Setup.Fault == nil || rec.Setup.Fault.Rules != "503:70" || rec.Setup.Fault.Delays != "503:1000,200:1000" {
 		t.Errorf("fault %+v", rec.Setup.Fault)
 	}
-	if rec.Env.CollectorNode.CPU != 3.92 {
+	if len(rec.Env.LoadNodes) == 0 || rec.Env.LoadNodes[0].CPU != 3.92 {
 		t.Errorf("env %+v", rec.Env)
 	}
 

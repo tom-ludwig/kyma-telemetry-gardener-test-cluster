@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -40,14 +41,19 @@ func main() {
 	steady := flag.Duration("steady", 20*time.Minute, "measured steady state")
 	cooldown := flag.Duration("cooldown", 3*time.Minute, "cool-down after the load stops")
 	skipPreflight := flag.Bool("skip-preflight", false, "skip preflight capacity, backend readiness and disk checks")
+	nodeSelector := flag.String("node-selector", "", "key=value node selector applied to all created pods (e.g. kubernetes.io/hostname=node1)")
 	flag.Parse()
 
-	if err := run(s, *matrix, *only, *vmURL, *warmup, *steady, *cooldown, *skipPreflight); err != nil {
+	ns, err := parseNodeSelector(*nodeSelector)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := run(s, *matrix, *only, *vmURL, *warmup, *steady, *cooldown, *skipPreflight, ns); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldown time.Duration, skipPreflight bool) error {
+func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldown time.Duration, skipPreflight bool, nodeSelector map[string]string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -59,7 +65,7 @@ func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldo
 	if err != nil {
 		return err
 	}
-	r, err := runner.New(k, result.Prom{API: promv1.NewAPI(promClient)}, warmup, steady, cooldown, os.Args[1:], skipPreflight)
+	r, err := runner.New(k, result.Prom{API: promv1.NewAPI(promClient)}, warmup, steady, cooldown, os.Args[1:], skipPreflight, nodeSelector)
 	if err != nil {
 		return err
 	}
@@ -78,6 +84,17 @@ func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldo
 	}
 	log.Printf("%s: done, valid=%t, first limit %+v", rec.Run.ID, rec.Valid, rec.Limit.First)
 	return nil
+}
+
+func parseNodeSelector(s string) (map[string]string, error) {
+	if s == "" {
+		return nil, nil
+	}
+	parts := strings.SplitN(s, "=", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("-node-selector %q: must be key=value", s)
+	}
+	return map[string]string{parts[0]: parts[1]}, nil
 }
 
 func kubeClient() (client.Client, error) {
