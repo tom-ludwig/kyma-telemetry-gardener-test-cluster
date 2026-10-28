@@ -51,7 +51,7 @@ func TestTMPipelineObjects(t *testing.T) {
 
 func TestGeneratorEndpointTM(t *testing.T) {
 	s := spec.RunSpec{Target: spec.TargetTM, Shape: spec.ShapeF1, Tenants: 1, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
-	objs, err := Generators(s, time.Minute)
+	objs, err := Generators(s, time.Minute, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

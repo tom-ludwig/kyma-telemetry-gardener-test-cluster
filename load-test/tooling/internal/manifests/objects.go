@@ -51,8 +51,8 @@ func readTemplate(path string, obj any) error {
 }
 
 // CollectorObjects returns the static collector manifests with the per-run values set:
-// one ConfigMap per config part, the run label and the TM memory limit.
-func CollectorObjects(s spec.RunSpec, parts [][]byte) ([]client.Object, error) {
+// one ConfigMap per config part, the run label, the TM memory limit, and the node selector.
+func CollectorObjects(s spec.RunSpec, parts [][]byte, nodeSelector map[string]string) ([]client.Object, error) {
 	raw, err := manifestsFS.ReadFile("collector.yaml")
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func CollectorObjects(s spec.RunSpec, parts [][]byte) ([]client.Object, error) {
 			continue
 		}
 		u.SetLabels(merge(u.GetLabels(), RunLabels(s)))
-		if err := setCollectorRunValues(u, s, len(parts)); err != nil {
+		if err := setCollectorRunValues(u, s, len(parts), nodeSelector); err != nil {
 			return nil, fmt.Errorf("collector.yaml %s: %w", u.GetKind(), err)
 		}
 		objs = append(objs, u)
@@ -111,7 +111,7 @@ func GeneratorImage() (string, error) {
 
 // CollectorImage returns the image of the collector under test, for the result record.
 func CollectorImage() string {
-	objs, err := CollectorObjects(spec.RunSpec{Tenants: 1}, nil)
+	objs, err := CollectorObjects(spec.RunSpec{Tenants: 1}, nil, nil)
 	if err != nil {
 		return ""
 	}
@@ -130,9 +130,9 @@ func CollectorImage() string {
 func configMapName(i int) string { return fmt.Sprintf("otelcol-%d", i) }
 func configFile(i int) string    { return fmt.Sprintf("relay-%d.conf", i) }
 
-// setCollectorRunValues sets the run label, the memory limit and one --config arg
-// plus one projected ConfigMap source per config part.
-func setCollectorRunValues(u *unstructured.Unstructured, s spec.RunSpec, parts int) error {
+// setCollectorRunValues sets the run label, the memory limit, one --config arg
+// plus one projected ConfigMap source per config part, and the node selector.
+func setCollectorRunValues(u *unstructured.Unstructured, s spec.RunSpec, parts int, nodeSelector map[string]string) error {
 	if u.GetKind() != "Deployment" {
 		return nil
 	}
@@ -176,7 +176,19 @@ func setCollectorRunValues(u *unstructured.Unstructured, s spec.RunSpec, parts i
 	if err := unstructured.SetNestedSlice(volumes[0].(map[string]any), sources, "projected", "sources"); err != nil {
 		return err
 	}
-	return unstructured.SetNestedSlice(u.Object, volumes, "spec", "template", "spec", "volumes")
+	if err := unstructured.SetNestedSlice(u.Object, volumes, "spec", "template", "spec", "volumes"); err != nil {
+		return err
+	}
+	if len(nodeSelector) > 0 {
+		ns := make(map[string]any, len(nodeSelector))
+		for k, v := range nodeSelector {
+			ns[k] = v
+		}
+		if err := unstructured.SetNestedMap(u.Object, ns, "spec", "template", "spec", "nodeSelector"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // PipelineServices gives every exporter its own endpoint; in faulty runs p-000 of each
@@ -257,14 +269,14 @@ func FaultBackendService(s spec.RunSpec, ns string) (*corev1.Service, error) {
 }
 
 // Generators: 1 Deployment per signal, each running a shell loop over all tenants.
-func Generators(s spec.RunSpec, duration time.Duration) ([]client.Object, error) {
+func Generators(s spec.RunSpec, duration time.Duration, nodeSelector map[string]string) ([]client.Object, error) {
 	var tmpl appsv1.Deployment
 	if err := readTemplate("generator.yaml", &tmpl); err != nil {
 		return nil, err
 	}
 	var objs []client.Object
 	for _, sig := range spec.Signals {
-		objs = append(objs, generator(&tmpl, s, sig, duration))
+		objs = append(objs, generator(&tmpl, s, sig, duration, nodeSelector))
 	}
 	return objs, nil
 }
@@ -278,14 +290,16 @@ func generatorEndpoint(s spec.RunSpec) string {
 	return "otelcol.otel-load-test.svc:4317"
 }
 
-func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, duration time.Duration) *appsv1.Deployment {
+func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, duration time.Duration, nodeSelector map[string]string) *appsv1.Deployment {
 	d := tmpl.DeepCopy()
 	d.Name = fmt.Sprintf("gen-%s", sig.Name)
 	app := map[string]string{"app": d.Name}
 	d.Labels = merge(app, RunLabels(s))
 	d.Spec.Selector.MatchLabels = app
 	d.Spec.Template.Labels = merge(app, RunLabels(s))
-
+	if len(nodeSelector) > 0 {
+		d.Spec.Template.Spec.NodeSelector = nodeSelector
+	}
 	c := &d.Spec.Template.Spec.Containers[0]
 	c.Name = sig.Name
 	c.Args = []string{generatorScript(s, sig, duration)}

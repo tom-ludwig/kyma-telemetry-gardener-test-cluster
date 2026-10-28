@@ -15,7 +15,7 @@ import (
 
 func TestCollectorObjects(t *testing.T) {
 	s := spec.RunSpec{Shape: spec.ShapeF1, Tenants: 2, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
-	objs, err := CollectorObjects(s, [][]byte{[]byte("base"), []byte("tenants")})
+	objs, err := CollectorObjects(s, [][]byte{[]byte("base"), []byte("tenants")}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestGeneratorWorkers(t *testing.T) {
 		1001: {"--workers=3", "--rate=333.6666666666667"},
 	} {
 		s := spec.RunSpec{Shape: spec.ShapeF1, Tenants: 1, Load: spec.LoadB, Rate: rate, Health: spec.Healthy, Rep: 1}
-		objs, err := Generators(s, time.Minute)
+		objs, err := Generators(s, time.Minute, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -26,9 +26,8 @@ const (
 )
 
 type nodes struct {
-	collector string
-	load      []string
-	env       result.Env
+	load []string
+	env  result.Env
 }
 
 // preflight stops a run before anything is created when the cluster cannot carry it.
@@ -66,12 +65,6 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 	}
 	loadAlloc, loadUsed := corev1.ResourceList{}, corev1.ResourceList{}
 	for _, node := range list.Items {
-		if node.Labels[manifests.RoleLabel] == "collector" {
-			n.collector = node.Name
-			n.env.CollectorNode = nodeInfo(node)
-			warnMemory(s, node)
-			continue
-		}
 		if node.Labels[manifests.RoleLabel] != "load" {
 			continue
 		}
@@ -84,14 +77,11 @@ func (r *Runner) checkNodes(ctx context.Context, s spec.RunSpec) (nodes, error) 
 		}
 		add(loadUsed, used)
 	}
-	if n.collector == "" || len(n.load) == 0 {
-		return n, fmt.Errorf("need one node labelled %s=collector and at least one %s=load", manifests.RoleLabel, manifests.RoleLabel)
+	if len(n.load) == 0 {
+		return n, fmt.Errorf("need at least one node labelled %s=load", manifests.RoleLabel)
 	}
 	if r.skipPreflight {
 		return n, nil
-	}
-	if err := r.checkCollectorNodeFree(ctx, n.collector); err != nil {
-		return n, err
 	}
 	pods := int64(len(spec.Signals)) // 1 pod per signal
 	need := corev1.ResourceList{
@@ -115,39 +105,6 @@ func nodeInfo(node corev1.Node) result.NodeInfo {
 		CPU:         node.Status.Allocatable.Cpu().AsApproximateFloat64(),
 		MemoryGiB:   node.Status.Allocatable.Memory().AsApproximateFloat64() / (1 << 30),
 	}
-}
-
-func warnMemory(s spec.RunSpec, node corev1.Node) {
-	limit := resource.MustParse(fmt.Sprintf("%dMi", s.MemoryLimitMi()))
-	if limit.Cmp(*node.Status.Allocatable.Memory()) <= 0 {
-		return
-	}
-	log.Printf("warning: collector memory limit %s is above node %s allocatable %s; node memory is the real limit",
-		limit.String(), node.Name, node.Status.Allocatable.Memory().String())
-}
-
-// checkCollectorNodeFree: only DaemonSet pods may run next to the collector.
-func (r *Runner) checkCollectorNodeFree(ctx context.Context, node string) error {
-	var pods corev1.PodList
-	if err := r.k.List(ctx, &pods, client.MatchingFields{"spec.nodeName": node}); err != nil {
-		return err
-	}
-	for _, p := range pods.Items {
-		if p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed || ownedByDaemonSet(p) {
-			continue
-		}
-		return fmt.Errorf("collector node %s runs %s/%s; only DaemonSet pods are allowed there", node, p.Namespace, p.Name)
-	}
-	return nil
-}
-
-func ownedByDaemonSet(p corev1.Pod) bool {
-	for _, o := range p.OwnerReferences {
-		if o.Kind == "DaemonSet" {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *Runner) requestsOn(ctx context.Context, node string) (corev1.ResourceList, error) {
