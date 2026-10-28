@@ -55,12 +55,14 @@ func containerSelFor(target, component, agentNode string) string {
 var ToolCommit = "dev"
 
 type Record struct {
-	Run       RunInfo                 `json:"run"`
-	Setup     Setup                   `json:"setup"`
-	Env       Env                     `json:"env"`
-	Config    ConfigRecord            `json:"config"`
-	Signals   map[string]SignalResult `json:"signals"` // by unit key: signal, or component/signal for agents
-	Collector CollectorResult         `json:"collector"`
+	Run    RunInfo      `json:"run"`
+	Setup  Setup        `json:"setup"`
+	Env    Env          `json:"env"`
+	Config ConfigRecord `json:"config"`
+	// Configs holds the size of each TM component's generated config, by component.
+	Configs   map[string]manifests.ConfigStats `json:"configs,omitempty"`
+	Signals   map[string]SignalResult          `json:"signals"` // by unit key: signal, or component/signal for agents
+	Collector CollectorResult                  `json:"collector"`
 	// Agents holds the node agents of a combined run (-component all); Collector is the gateway then.
 	Agents        map[string]CollectorResult `json:"agents,omitempty"`
 	Limit         Limits                     `json:"limit"`

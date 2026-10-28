@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -64,6 +65,7 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 	defer r.cleanup(context.WithoutCancel(ctx), s)
 
 	var startup float64
+	var tmConfigs map[string]manifests.ConfigStats
 	if s.Target == spec.TargetTM {
 		if err := r.applyTM(ctx, s); err != nil {
 			return nil, err
@@ -71,6 +73,7 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 		if err := r.waitPipelines(ctx, s); err != nil {
 			return nil, err
 		}
+		tmConfigs = r.tmConfigs(ctx, s)
 	} else {
 		if err := r.applyCollector(ctx, s, configParts); err != nil {
 			return nil, err
@@ -98,6 +101,7 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 	if err != nil {
 		return nil, err
 	}
+	rec.Configs = tmConfigs
 	watches := newWatches(s, start)
 	watchCtx, stopWatch := context.WithCancel(ctx)
 	defer stopWatch()
@@ -118,6 +122,26 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 		return nil, err
 	}
 	return rec, result.PrintRecord(rec)
+}
+
+// tmConfigs reads the config TM generated for each component under test. Its pipelines are
+// ready, so the config holds all of the run's pipelines. A failed read only logs.
+func (r *Runner) tmConfigs(ctx context.Context, s spec.RunSpec) map[string]manifests.ConfigStats {
+	configs := map[string]manifests.ConfigStats{}
+	for _, c := range s.Components() {
+		var cm corev1.ConfigMap
+		if err := r.k.Get(ctx, types.NamespacedName{Namespace: spec.TMNamespace, Name: spec.TMApps[c]}, &cm); err != nil {
+			log.Printf("%s: read %s config: %v", s.ID(), c, err)
+			continue
+		}
+		stats, err := manifests.TMConfigStats([]byte(cm.Data["relay.conf"]))
+		if err != nil {
+			log.Printf("%s: parse %s config: %v", s.ID(), c, err)
+			continue
+		}
+		configs[c] = stats
+	}
+	return configs
 }
 
 // newRecord holds the run's inputs; the measured values are filled in later.
