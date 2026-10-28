@@ -24,13 +24,16 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml gateway-service-monitor.yaml
+//go:embed collector.yaml generator.yaml fault-backend.yaml pipeline-service.yaml gateway-service-monitor.yaml log-generator.yaml metric-generator.yaml
 var manifestsFS embed.FS
 
 const (
 	LoadNamespace = "otel-load-test"
 	RunLabel      = "loadtest.kyma-project.io/run"
 	RoleLabel     = "load-test/role"
+
+	// LogGeneratorContainer is the container name in log-generator.yaml that LogPipelines read.
+	LogGeneratorContainer = "log-gen"
 
 	// items/s per telemetrygen worker, well below its measured ~1600/s ceiling
 	itemsPerWorker = 500
@@ -219,7 +222,7 @@ func pipelineService(tmpl *corev1.Service, fault *appsv1.Deployment, s spec.RunS
 	svc.Labels = merge(svc.Labels, RunLabels(s))
 	svc.Spec.Selector = map[string]string{"app": DebugBackendName}
 	svc.Spec.Ports[0].Port = int32(DebugBackendPort)
-	svc.Spec.Ports[0].TargetPort = intstr.FromInt(DebugBackendPort)
+	svc.Spec.Ports[0].TargetPort = intstr.FromInt32(DebugBackendPort)
 	if s.Health != spec.Faulty || i != 0 {
 		return svc
 	}
@@ -268,17 +271,141 @@ func FaultBackendService(s spec.RunSpec, ns string) (*corev1.Service, error) {
 	return svc, nil
 }
 
-// Generators: 1 Deployment per signal, each running a shell loop over all tenants.
+// Generators: per gateway signal 1 telemetrygen Deployment, per agent its own generator;
+// each runs a shell loop over all tenants.
 func Generators(s spec.RunSpec, duration time.Duration, nodeSelector map[string]string) ([]client.Object, error) {
 	var tmpl appsv1.Deployment
 	if err := readTemplate("generator.yaml", &tmpl); err != nil {
 		return nil, err
 	}
 	var objs []client.Object
-	for _, sig := range spec.Signals {
-		objs = append(objs, generator(&tmpl, s, sig, duration, nodeSelector))
+	for _, u := range s.Units() {
+		if u.Component == spec.ComponentGateway {
+			objs = append(objs, generator(&tmpl, s, u, duration, nodeSelector))
+			continue
+		}
+		gen, err := agentGenerators(s, u, nodeSelector)
+		if err != nil {
+			return nil, err
+		}
+		objs = append(objs, gen...)
 	}
 	return objs, nil
+}
+
+// agentGeneratorTemplates holds the generator Deployment of each node agent; it runs on the
+// -node-selector node, because an agent only collects from its own node.
+var agentGeneratorTemplates = map[string]string{
+	spec.ComponentLogAgent:    "log-generator.yaml",
+	spec.ComponentMetricAgent: "metric-generator.yaml",
+}
+
+const (
+	// gaugesPerTarget is the avalanche metric count; the series per metric set the volume.
+	gaugesPerTarget = 10
+	// maxSamplesPerTarget stays below TM's prometheus sample_limit (50000) per scrape target;
+	// above it the agent drops the whole scrape.
+	maxSamplesPerTarget = 45000
+)
+
+// AgentGeneratorImage returns the generator image of a node agent, for the result record.
+func AgentGeneratorImage(component string) (string, error) {
+	var d appsv1.Deployment
+	if err := readTemplate(agentGeneratorTemplates[component], &d); err != nil {
+		return "", err
+	}
+	return d.Spec.Template.Spec.Containers[0].Image, nil
+}
+
+// agentGenerators returns the generator objects of one node agent with the run label set.
+func agentGenerators(s spec.RunSpec, u spec.Unit, nodeSelector map[string]string) ([]client.Object, error) {
+	path, ok := agentGeneratorTemplates[u.Component]
+	if !ok {
+		return nil, fmt.Errorf("no generator for %s", u.Component)
+	}
+	var d appsv1.Deployment
+	if err := readTemplate(path, &d); err != nil {
+		return nil, err
+	}
+	d.Labels = merge(d.Labels, RunLabels(s))
+	d.Spec.Template.Labels = merge(d.Spec.Template.Labels, RunLabels(s))
+	d.Spec.Template.Spec.NodeSelector = nodeSelector
+	if u.Component == spec.ComponentLogAgent {
+		d.Spec.Template.Spec.Containers[0].Args = []string{logAgentScript(s, u)}
+		return []client.Object{&d}, nil
+	}
+	targets, series := metricTargets(s, u)
+	d.Spec.Template.Spec.Containers[0].Args = []string{metricAgentScript(s, targets, series)}
+	return append([]client.Object{&d}, metricAgentServices(s, targets, d.Spec.Selector.MatchLabels)...), nil
+}
+
+// metricTargets splits one tenant's samples per scrape over as many scrape targets as needed
+// to keep each below maxSamplesPerTarget; it returns the targets per tenant and the series
+// per gauge of each target.
+func metricTargets(s spec.RunSpec, u spec.Unit) (targets, series int) {
+	samples := s.TenantRate(u) * spec.ScrapeIntervalS
+	targets = (samples + maxSamplesPerTarget - 1) / maxSamplesPerTarget
+	return targets, max(1, samples/targets/gaugesPerTarget)
+}
+
+// metricPort is the port of tenant i's target j.
+func metricPort(i, j, targets int) int32 { return int32(spec.MetricPortBase + i*targets + j) }
+
+// metricAgentScript launches one avalanche per tenant and target on port metricPort(i, j).
+// Each serves gauges only with fixed series and the tenant as a constant label, so one scrape
+// per interval yields the tenant's data points/s.
+func metricAgentScript(s spec.RunSpec, targets, series int) string {
+	return fmt.Sprintf(`for i in $(seq 0 %d); do
+  for j in $(seq 0 %d); do
+    avalanche --port=$((%d + i * %d + j)) \
+      --const-label="tenant=$(printf 'tenant-%%03d' $i)" \
+      --gauge-metric-count=%d --counter-metric-count=0 --histogram-metric-count=0 \
+      --native-histogram-metric-count=0 --summary-metric-count=0 \
+      --series-count=%d --label-count=2 \
+      --series-interval=0 --metric-interval=0 --series-change-interval=0 &
+  done
+done
+wait
+`, s.Tenants-1, targets-1, spec.MetricPortBase, targets, gaugesPerTarget, series)
+}
+
+// metricAgentServices gives every avalanche its own scrape target: one Service per tenant and
+// target on the generator pod, annotated with that target's port.
+func metricAgentServices(s spec.RunSpec, targets int, selector map[string]string) []client.Object {
+	var objs []client.Object
+	for i := range s.Tenants {
+		for j := range targets {
+			port := metricPort(i, j, targets)
+			objs = append(objs, &corev1.Service{
+				TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fmt.Sprintf("gen-metric-agent-%s-%d", spec.PipelineID(i), j),
+					Namespace: LoadNamespace,
+					Labels:    RunLabels(s),
+					Annotations: map[string]string{
+						"prometheus.io/scrape": "true",
+						"prometheus.io/port":   fmt.Sprint(port),
+					},
+				},
+				Spec: corev1.ServiceSpec{
+					Selector: selector,
+					Ports:    []corev1.ServicePort{{Name: "metrics", Port: port, TargetPort: intstr.FromInt32(port)}},
+				},
+			})
+		}
+	}
+	return objs
+}
+
+// logAgentScript launches one stdout-log-generator per tenant. Each writes JSON lines of
+// BodyBytes with its tenant as a field, which the log agent parses into log attributes.
+// The generator has no duration flag; the tool deletes the Deployment when the load stops.
+func logAgentScript(s spec.RunSpec, u spec.Unit) string {
+	return fmt.Sprintf(`for i in $(seq 0 %d); do
+  stdout-log-generator --format=json -b %d -r %d -f "tenant=$(printf 'tenant-%%03d' $i)" &
+done
+wait
+`, s.Tenants-1, u.Signal.BodyBytes, s.TenantRate(u))
 }
 
 // generatorEndpoint is the OTLP gRPC endpoint generators send to: our collector for otel,
@@ -290,7 +417,8 @@ func generatorEndpoint(s spec.RunSpec) string {
 	return "otelcol.otel-load-test.svc:4317"
 }
 
-func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, duration time.Duration, nodeSelector map[string]string) *appsv1.Deployment {
+func generator(tmpl *appsv1.Deployment, s spec.RunSpec, u spec.Unit, duration time.Duration, nodeSelector map[string]string) *appsv1.Deployment {
+	sig := u.Signal
 	d := tmpl.DeepCopy()
 	d.Name = fmt.Sprintf("gen-%s", sig.Name)
 	app := map[string]string{"app": d.Name}
@@ -302,13 +430,14 @@ func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, duratio
 	}
 	c := &d.Spec.Template.Spec.Containers[0]
 	c.Name = sig.Name
-	c.Args = []string{generatorScript(s, sig, duration)}
+	c.Args = []string{generatorScript(s, u, duration)}
 	return d
 }
 
 // generatorScript builds the shell script that launches one telemetrygen per tenant.
-func generatorScript(s spec.RunSpec, sig spec.Signal, duration time.Duration) string {
-	rate := s.TenantRate(sig)
+func generatorScript(s spec.RunSpec, u spec.Unit, duration time.Duration) string {
+	sig := u.Signal
+	rate := s.TenantRate(u)
 	workers := Workers(rate)
 	var b strings.Builder
 	if sig.BodyBytes > 0 {

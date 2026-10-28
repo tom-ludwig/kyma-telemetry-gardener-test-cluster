@@ -33,6 +33,26 @@ type ConfigStats struct {
 	Exporters          int `json:"exporters"`
 }
 
+// TMConfigStats counts a collector config Telemetry Manager generated (relay.conf of its ConfigMap).
+func TMConfigStats(raw []byte) (ConfigStats, error) {
+	var c struct {
+		Exporters map[string]any `json:"exporters"`
+		Service   struct {
+			Pipelines map[string]struct {
+				Processors []string `json:"processors"`
+			} `json:"pipelines"`
+		} `json:"service"`
+	}
+	if err := yaml.Unmarshal(raw, &c); err != nil {
+		return ConfigStats{}, err
+	}
+	stats := ConfigStats{Bytes: len(raw), ConfigMaps: 1, ServicePipelines: len(c.Service.Pipelines), Exporters: len(c.Exporters)}
+	for _, p := range c.Service.Pipelines {
+		stats.ProcessorInstances += len(p.Processors)
+	}
+	return stats, nil
+}
+
 type collectorConfig struct {
 	processors, exporters, connectors, pipelines map[string]any
 	processorInstances                           int

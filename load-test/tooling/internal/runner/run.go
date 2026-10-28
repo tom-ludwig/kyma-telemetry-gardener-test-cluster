@@ -15,7 +15,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -63,6 +65,7 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 	defer r.cleanup(context.WithoutCancel(ctx), s)
 
 	var startup float64
+	var tmConfigs map[string]manifests.ConfigStats
 	if s.Target == spec.TargetTM {
 		if err := r.applyTM(ctx, s); err != nil {
 			return nil, err
@@ -70,6 +73,7 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 		if err := r.waitPipelines(ctx, s); err != nil {
 			return nil, err
 		}
+		tmConfigs = r.tmConfigs(ctx, s)
 	} else {
 		if err := r.applyCollector(ctx, s, configParts); err != nil {
 			return nil, err
@@ -97,10 +101,11 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 	if err != nil {
 		return nil, err
 	}
-	watch := &collectorWatch{start: start}
+	rec.Configs = tmConfigs
+	watches := newWatches(s, start)
 	watchCtx, stopWatch := context.WithCancel(ctx)
 	defer stopWatch()
-	if reason := waitOrStop(ctx, r.watchdog(watchCtx, s, w, n, watch), w.SteadyEnd); reason != "" {
+	if reason := waitOrStop(ctx, r.watchdog(watchCtx, s, w, n, watches), w.SteadyEnd); reason != "" {
 		return rec, r.invalid(rec, reason)
 	}
 	stopWatch()
@@ -109,14 +114,34 @@ func (r *Runner) Run(ctx context.Context, s spec.RunSpec) (*result.Record, error
 		return nil, err
 	}
 	drain := r.waitDrain(ctx, s, w.SteadyEnd)
-	r.observeCollector(ctx, s, watch) // restarts after the last watchdog tick
+	r.observeCollectors(ctx, s, n, watches) // restarts after the last watchdog tick
 	w.End = time.Now()
 	rec.Run.End = w.End
 
-	if err := r.fill(ctx, s, w, n, rec, watch, drain); err != nil {
+	if err := r.fill(ctx, s, w, n, rec, watches, drain); err != nil {
 		return nil, err
 	}
 	return rec, result.PrintRecord(rec)
+}
+
+// tmConfigs reads the config TM generated for each component under test. Its pipelines are
+// ready, so the config holds all of the run's pipelines. A failed read only logs.
+func (r *Runner) tmConfigs(ctx context.Context, s spec.RunSpec) map[string]manifests.ConfigStats {
+	configs := map[string]manifests.ConfigStats{}
+	for _, c := range s.Components() {
+		var cm corev1.ConfigMap
+		if err := r.k.Get(ctx, types.NamespacedName{Namespace: spec.TMNamespace, Name: spec.TMApps[c]}, &cm); err != nil {
+			log.Printf("%s: read %s config: %v", s.ID(), c, err)
+			continue
+		}
+		stats, err := manifests.TMConfigStats([]byte(cm.Data["relay.conf"]))
+		if err != nil {
+			log.Printf("%s: parse %s config: %v", s.ID(), c, err)
+			continue
+		}
+		configs[c] = stats
+	}
+	return configs
 }
 
 // newRecord holds the run's inputs; the measured values are filled in later.
@@ -132,7 +157,7 @@ func (r *Runner) newRecord(s spec.RunSpec, stats manifests.ConfigStats, startup 
 	rec := &result.Record{
 		Run: result.RunInfo{ID: s.ID(), Args: r.args, ToolCommit: result.ToolCommit, Date: time.Now().UTC(),
 			CollectorImage: collectorImage, Start: w.Start, SteadyStart: w.SteadyStart, SteadyEnd: w.SteadyEnd},
-		Setup: result.Setup{Target: s.Target, Shape: s.Shape, Load: s.Load, Tenants: s.Tenants, Health: s.Health,
+		Setup: result.Setup{Target: s.Target, Component: s.Components()[0], Shape: s.Shape, Load: s.Load, Tenants: s.Tenants, Health: s.Health,
 			RatePerTenant: map[string]int{}, OfferedPerS: map[string]int{},
 			MemLimitMiB: s.MemoryLimitMi(), QueueSizePerExporter: s.QueueSize(),
 			PhasesS:   result.Phases{Warmup: r.warmup.Seconds(), Steady: r.steady.Seconds(), Cooldown: r.cooldown.Seconds()},
@@ -143,11 +168,22 @@ func (r *Runner) newRecord(s spec.RunSpec, stats manifests.ConfigStats, startup 
 		Limit:   result.Limits{All: []result.Hit{}},
 		Valid:   true,
 	}
-	for _, sig := range spec.Signals {
-		rec.Setup.RatePerTenant[sig.Name] = s.TenantRate(sig)
-		rec.Setup.OfferedPerS[sig.Name] = s.OfferedRate(sig)
-		rec.Setup.Generator.WorkersPerTenant[sig.Name] = manifests.Workers(s.TenantRate(sig))
-		rec.Setup.Generator.LogBodyBytes = max(rec.Setup.Generator.LogBodyBytes, sig.BodyBytes)
+	for _, u := range s.Units() {
+		rec.Setup.RatePerTenant[u.Key()] = s.TenantRate(u)
+		rec.Setup.OfferedPerS[u.Key()] = s.OfferedRate(u)
+		rec.Setup.Generator.LogBodyBytes = max(rec.Setup.Generator.LogBodyBytes, u.Signal.BodyBytes)
+		if u.Component == spec.ComponentGateway {
+			rec.Setup.Generator.WorkersPerTenant[u.Key()] = manifests.Workers(s.TenantRate(u))
+			continue
+		}
+		image, err := manifests.AgentGeneratorImage(u.Component)
+		if err != nil {
+			return nil, err
+		}
+		if rec.Setup.Generator.AgentImages == nil {
+			rec.Setup.Generator.AgentImages = map[string]string{}
+		}
+		rec.Setup.Generator.AgentImages[u.Component] = image
 	}
 	if s.Health != spec.Faulty {
 		return rec, nil
@@ -199,20 +235,22 @@ func waitOrStop(ctx context.Context, stop <-chan string, t time.Time) string {
 }
 
 // fill queries vm-single for all record values and evaluates the limits.
-func (r *Runner) fill(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, rec *result.Record, watch *collectorWatch, drain *float64) error {
-	collector, err := r.p.QueryCollector(ctx, s, w)
-	if err != nil {
-		return err
-	}
-	collector.QueueDrainS = drain
-	watch.apply(&collector)
-	rec.Collector = collector
-	for _, sig := range spec.Signals {
-		res, err := r.p.QuerySignal(ctx, s, sig, w)
+func (r *Runner) fill(ctx context.Context, s spec.RunSpec, w result.Window, n nodes, rec *result.Record, watches map[string]*collectorWatch, drain *float64) error {
+	for _, c := range s.Components() {
+		collector, err := r.p.QueryCollector(ctx, s, c, n.agent, w)
 		if err != nil {
 			return err
 		}
-		rec.Signals[sig.Name] = res
+		collector.QueueDrainS = drain
+		watches[c].apply(&collector)
+		rec.SetCollector(s, c, collector)
+	}
+	for _, u := range s.Units() {
+		res, err := r.p.QuerySignal(ctx, s, u, w)
+		if err != nil {
+			return err
+		}
+		rec.Signals[u.Key()] = res
 	}
 	if err := r.p.EvalLimits(ctx, s, w, rec, n.env.CollectorNode.CPU); err != nil {
 		return err
@@ -262,16 +300,22 @@ func (r *Runner) applyTM(ctx context.Context, s spec.RunSpec) error {
 		}
 		objs = append(objs, fault, faultSvc)
 	}
-	sm, err := manifests.GatewayServiceMonitor()
-	if err != nil {
-		return err
+	for _, c := range s.Components() {
+		sm, err := manifests.ServiceMonitor(spec.TMApps[c])
+		if err != nil {
+			return err
+		}
+		objs = append(objs, sm)
 	}
-	objs = append(objs, sm)
 	return r.create(ctx, append(objs, pipelines...))
 }
 
-// waitPipelines waits until every pipeline CR reports ConfigurationGenerated=True and the
-// debug backend is Ready, so the gateway has the run's config before load starts.
+// agentOf is the node agent TM starts for a pipeline kind; its pipelines also wait for AgentHealthy.
+var agentOf = map[string]string{"LogPipeline": spec.ComponentLogAgent, "MetricPipeline": spec.ComponentMetricAgent}
+
+// waitPipelines waits until every pipeline CR reports ConfigurationGenerated=True (and
+// AgentHealthy=True when an agent under test serves it), so TM has the run's config
+// before load starts.
 func (r *Runner) waitPipelines(ctx context.Context, s spec.RunSpec) error {
 	pipelines, err := manifests.TMPipelineObjects(s)
 	if err != nil {
@@ -285,6 +329,9 @@ func (r *Runner) waitPipelines(ctx context.Context, s spec.RunSpec) error {
 				return false, client.IgnoreNotFound(err)
 			}
 			if !conditionTrue(u, "ConfigurationGenerated") {
+				return false, nil
+			}
+			if s.Has(agentOf[u.GetKind()]) && !conditionTrue(u, "AgentHealthy") {
 				return false, nil
 			}
 		}
@@ -378,7 +425,12 @@ func (r *Runner) waitDrain(ctx context.Context, s spec.RunSpec, loadStop time.Ti
 
 func (r *Runner) create(ctx context.Context, objs []client.Object) error {
 	for _, o := range objs {
-		if err := r.k.Patch(ctx, o, client.Apply, client.ForceOwnership, client.FieldOwner("loadtest")); err != nil {
+		u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(o)
+		if err != nil {
+			return fmt.Errorf("create %T %s: %w", o, o.GetName(), err)
+		}
+		apply := client.ApplyConfigurationFromUnstructured(&unstructured.Unstructured{Object: u})
+		if err := r.k.Apply(ctx, apply, client.ForceOwnership, client.FieldOwner("loadtest")); err != nil {
 			return fmt.Errorf("create %T %s: %w", o, o.GetName(), err)
 		}
 	}

@@ -17,17 +17,51 @@ func steps(start time.Time, from, to int) []time.Time {
 }
 
 func TestSelectorsForTarget(t *testing.T) {
-	sig := spec.Signals[0]
-	otel := SelectorsFor(spec.RunSpec{Target: spec.TargetOTel, Shape: spec.ShapeF1, Tenants: 5, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}, sig)
+	u := spec.Unit{Component: spec.ComponentGateway, Signal: spec.Signals[0]}
+	otel := SelectorsFor(spec.RunSpec{Target: spec.TargetOTel, Shape: spec.ShapeF1, Tenants: 5, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}, u)
 	if !strings.Contains(otel.Run, RunPromLabel) {
 		t.Errorf("otel Run selector lacks run label: %q", otel.Run)
 	}
-	tm := SelectorsFor(spec.RunSpec{Target: spec.TargetTM, Shape: spec.ShapeF1, Tenants: 5, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}, sig)
+	tm := SelectorsFor(spec.RunSpec{Target: spec.TargetTM, Shape: spec.ShapeF1, Tenants: 5, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}, u)
 	if strings.Contains(tm.Run, RunPromLabel) {
 		t.Errorf("tm Run selector must not carry a run label: %q", tm.Run)
 	}
-	if tm.Run != tmCollectorSel || tm.Exp != tmCollectorSel || tm.Healthy != tmCollectorSel {
+	gw := `namespace="kyma-system",pod=~"telemetry-otlp-gateway-.*"`
+	if tm.Run != gw || tm.Exp != gw || tm.Healthy != gw {
 		t.Errorf("tm selectors must all be the gateway selector: %+v", tm)
+	}
+	agent := SelectorsFor(spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentLogAgent}, spec.Unit{Component: spec.ComponentLogAgent, Signal: spec.Signals[2]})
+	if agent.Run != `namespace="kyma-system",pod=~"telemetry-log-agent-.*"` {
+		t.Errorf("log agent selector %q", agent.Run)
+	}
+}
+
+// Agents run on every node; only the agent-node agent's cadvisor series may count.
+func TestContainerSelAgentsOnAgentNode(t *testing.T) {
+	if got := containerSelFor(spec.TargetTM, spec.ComponentMetricAgent, "n1"); !strings.Contains(got, `node="n1"`) {
+		t.Errorf("metric agent container selector %q", got)
+	}
+	if got := containerSelFor(spec.TargetTM, spec.ComponentGateway, "n1"); strings.Contains(got, "node=") {
+		t.Errorf("gateway container selector must cover all gateway pods: %q", got)
+	}
+}
+
+func TestCollectorPerComponent(t *testing.T) {
+	s := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentAll}
+	var rec Record
+	rec.SetCollector(s, spec.ComponentGateway, CollectorResult{CPUAvg: 1})
+	rec.SetCollector(s, spec.ComponentLogAgent, CollectorResult{CPUAvg: 2})
+	if rec.Collector.CPUAvg != 1 || rec.Agents[spec.ComponentLogAgent].CPUAvg != 2 {
+		t.Errorf("collector %+v agents %+v", rec.Collector, rec.Agents)
+	}
+	if name, res := rec.collector(s, spec.ComponentLogAgent); name != spec.ComponentLogAgent || res.CPUAvg != 2 {
+		t.Errorf("collector(log-agent) = %q %+v", name, res)
+	}
+	single := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentLogAgent}
+	var one Record
+	one.SetCollector(single, spec.ComponentLogAgent, CollectorResult{CPUAvg: 3})
+	if one.Collector.CPUAvg != 3 || one.Agents != nil {
+		t.Errorf("single agent run: collector %+v agents %+v", one.Collector, one.Agents)
 	}
 }
 
@@ -78,12 +112,12 @@ func TestIsolationUsesHealthyExporters(t *testing.T) {
 func TestCollectorLimits(t *testing.T) {
 	at := 120.0
 	rec := &Record{Collector: CollectorResult{Restarts: 1, RestartAtS: &at, OOMKilled: true, OOMAtS: &at}}
-	addCollectorLimits(rec, 1500)
+	addCollectorLimits(rec, "", rec.Collector, 1500)
 	if !rec.Limit.Hard || len(rec.Limit.All) != 2 || rec.Limit.First.AtS != 120 {
 		t.Errorf("limits %+v", rec.Limit)
 	}
 	evicted := &Record{Collector: CollectorResult{Evicted: true}}
-	addCollectorLimits(evicted, 1500)
+	addCollectorLimits(evicted, "", evicted.Collector, 1500)
 	if evicted.Limit.First == nil || evicted.Limit.First.ID != "H1" {
 		t.Errorf("eviction: %+v", evicted.Limit)
 	}

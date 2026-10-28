@@ -22,7 +22,7 @@ func fakeRunner(limit int) (*Runner, *[]string) {
 
 func TestMatrixRunsEachIDOnce(t *testing.T) {
 	r, ran := fakeRunner(43)
-	if err := r.Matrix(context.Background(), spec.TargetOTel, 1000, ""); err != nil {
+	if err := r.Matrix(context.Background(), spec.TargetOTel, spec.ComponentGateway, 1000, ""); err != nil {
 		t.Fatal(err)
 	}
 	seen := map[string]bool{}
@@ -59,7 +59,7 @@ func TestMatrixRunsEachIDOnce(t *testing.T) {
 // Every faulty run needs its healthy baseline before it, for S5.
 func TestMatrixHealthyBeforeFaulty(t *testing.T) {
 	r, ran := fakeRunner(1000)
-	if err := r.Matrix(context.Background(), spec.TargetOTel, 1000, ""); err != nil {
+	if err := r.Matrix(context.Background(), spec.TargetOTel, spec.ComponentGateway, 1000, ""); err != nil {
 		t.Fatal(err)
 	}
 	pos := map[string]int{}
@@ -77,9 +77,24 @@ func TestMatrixHealthyBeforeFaulty(t *testing.T) {
 	}
 }
 
+func TestMatrixAgentRunsCarryComponent(t *testing.T) {
+	r, ran := fakeRunner(1000)
+	if err := r.Matrix(context.Background(), spec.TargetTM, spec.ComponentLogAgent, 1000, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range *ran {
+		if !strings.HasPrefix(id, "tm-log-agent-f1-") {
+			t.Errorf("log-agent matrix ran %s", id)
+		}
+	}
+	if err := r.Matrix(context.Background(), spec.TargetOTel, spec.ComponentLogAgent, 1000, ""); err == nil {
+		t.Error("otel log-agent matrix accepted")
+	}
+}
+
 func TestMatrixOnlyFilter(t *testing.T) {
 	r, ran := fakeRunner(1000)
-	if err := r.Matrix(context.Background(), spec.TargetOTel, 1000, "otel-r1-A-*"); err != nil {
+	if err := r.Matrix(context.Background(), spec.TargetOTel, spec.ComponentGateway, 1000, "otel-r1-A-*"); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range *ran {

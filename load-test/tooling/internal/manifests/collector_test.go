@@ -175,3 +175,33 @@ func TestSplitConfigMergesBack(t *testing.T) {
 		t.Error("want error for an entry above the budget")
 	}
 }
+
+func TestTMConfigStats(t *testing.T) {
+	raw := []byte(`receivers:
+  otlp: {}
+processors:
+  batch: {}
+  filter/p-000: {}
+exporters:
+  otlp_http/p-000: {}
+  otlp_http/p-001: {}
+service:
+  pipelines:
+    metrics/p-000:
+      receivers: [otlp]
+      processors: [batch, filter/p-000]
+      exporters: [otlp_http/p-000]
+    metrics/p-001:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/p-001]
+`)
+	got, err := TMConfigStats(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ConfigStats{Bytes: len(raw), ConfigMaps: 1, ServicePipelines: 2, ProcessorInstances: 3, Exporters: 2}
+	if got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}

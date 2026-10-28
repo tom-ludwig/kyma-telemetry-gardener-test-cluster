@@ -25,7 +25,7 @@ func TestNewRecordInputs(t *testing.T) {
 		t.Errorf("phases %+v", rec.Setup.PhasesS)
 	}
 	for _, sig := range spec.Signals {
-		want := manifests.Workers(s.TenantRate(sig))
+		want := manifests.Workers(s.TenantRate(spec.Unit{Component: spec.ComponentGateway, Signal: sig}))
 		if got := rec.Setup.Generator.WorkersPerTenant[sig.Name]; got != want {
 			t.Errorf("generator workers[%s]: got %d, want %d", sig.Name, got, want)
 		}

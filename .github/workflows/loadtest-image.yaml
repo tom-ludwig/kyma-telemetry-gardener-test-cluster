@@ -3,7 +3,7 @@ name: loadtest image
 on:
   push:
     branches: [main]
-    paths: ["load-test/tooling/**"]
+    paths: ["load-test/tooling/**", ".github/workflows/loadtest-image.yaml"]
   workflow_dispatch:
 
 permissions:
@@ -32,6 +32,7 @@ jobs:
           context: load-test/tooling
           build-args: GIT_SHA=${{ github.sha }}
           push: true
+          # Only main moves the :main tag; branch builds get their commit SHA only.
           tags: |
-            ghcr.io/${{ github.repository }}/loadtest:main
+            ${{ github.ref_name == 'main' && format('ghcr.io/{0}/loadtest:main', github.repository) || '' }}
             ghcr.io/${{ github.repository }}/loadtest:${{ github.sha }}

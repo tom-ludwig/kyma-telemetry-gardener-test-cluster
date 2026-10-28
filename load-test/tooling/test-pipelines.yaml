@@ -1,0 +1,44 @@
+apiVersion: telemetry.kyma-project.io/v1beta1
+kind: LogPipeline
+metadata:
+  name: test-pipeline
+spec:
+  input:
+    runtime:
+      enabled: true
+      namespaces:
+        include: [kube-node-lease]
+    otlp:
+      enabled: false
+  output:
+    otlp:
+      endpoint:
+        value: http://localhost:4318 # never called, nothing is collected
+      protocol: http
+---
+apiVersion: telemetry.kyma-project.io/v1beta1
+kind: MetricPipeline
+metadata:
+  name: test-pipeline
+spec:
+  input:
+    runtime:
+      enabled: true
+      namespaces:
+        include: [kube-node-lease]
+    prometheus:
+      enabled: false
+    istio:
+      enabled: false
+    otlp:
+      enabled: false
+  # The gateway still hands this pipeline every OTLP metric of the tests; drop all of it.
+  filter:
+    - conditions:
+        - resource.attributes["k8s.namespace.name"] != "kube-node-lease"
+  output:
+    otlp:
+      endpoint:
+        # node and cluster metrics of the runtime input pass the namespace filter (~1 dp/s)
+        value: http://vmsingle-load-test.load-test-backends.svc:8428/opentelemetry
+      protocol: http

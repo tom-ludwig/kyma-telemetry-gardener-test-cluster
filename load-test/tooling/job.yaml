@@ -22,6 +22,7 @@ spec:
           imagePullPolicy: Always
           args:
             - -target=tm # test managed Telemetry Manager gateway (F1, healthy only); default otel
+            # - -component=log-agent # gateway (default), log-agent, metric-agent or all; agents and all need -target=tm
             - -shape=F1
             - -tenants=10
             - -load=A
@@ -34,6 +35,7 @@ spec:
             requests:
               cpu: 50m
               memory: 64Mi
+              ephemeral-storage: 64Mi
             limits:
               memory: 556Mi
           securityContext:

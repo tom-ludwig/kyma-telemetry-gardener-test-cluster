@@ -3,6 +3,7 @@ package spec
 import (
 	_ "embed"
 	"fmt"
+	"slices"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -23,6 +24,13 @@ const (
 	TargetOTel = "otel"
 	TargetTM   = "tm"
 
+	// Components under test. otel has only the gateway; tm also has the node agents and all
+	// three together.
+	ComponentGateway     = "gateway"
+	ComponentLogAgent    = "log-agent"
+	ComponentMetricAgent = "metric-agent"
+	ComponentAll         = "all"
+
 	MaxTenants = 100
 	SearchGap  = 5
 
@@ -33,7 +41,25 @@ const (
 	TMGatewayApp      = "telemetry-otlp-gateway" // app.kubernetes.io/name of the shared OTLP gateway
 	// TMBackendNamespace holds the per-run nop debug backend TM pipelines export to.
 	TMBackendNamespace = "tm-pipeline-test"
+	// ScrapeIntervalS is TM's default Prometheus scrape interval; metric generators size their
+	// series so that one scrape per interval yields the planned data points/s.
+	ScrapeIntervalS = 30
+	// MetricPortBase is the port of the first metric generator target; the others follow it.
+	MetricPortBase = 9001
 )
+
+// TMApps is the app.kubernetes.io/name of each TM component's pods.
+var TMApps = map[string]string{
+	ComponentGateway:     TMGatewayApp,
+	ComponentLogAgent:    "telemetry-log-agent",
+	ComponentMetricAgent: "telemetry-metric-agent",
+}
+
+// agentSignal is the one signal each node agent collects.
+var agentSignal = map[string]string{
+	ComponentLogAgent:    "logs",
+	ComponentMetricAgent: "metrics",
+}
 
 //go:embed signals.yaml
 var signalsYAML []byte
@@ -44,6 +70,7 @@ type Signal struct {
 	Item      string `json:"item"`
 	FilterKey string `json:"filterKey"`
 	TotalRate int    `json:"totalRate"`
+	AgentRate int    `json:"agentRate"`
 	BodyBytes int    `json:"bodyBytes"`
 }
 
@@ -72,34 +99,93 @@ func loadSignals(raw []byte) ([]Signal, error) {
 		if s.Name == "" || s.Item == "" || s.FilterKey == "" || s.TotalRate <= 0 {
 			return nil, fmt.Errorf("signal %q: name, item, filterKey and totalRate are required", s.Name)
 		}
+		if s.AgentRate < 0 || s.AgentRate >= s.TotalRate {
+			return nil, fmt.Errorf("signal %q: agentRate must be 0..totalRate-1", s.Name)
+		}
 	}
 	return file.Signals, nil
 }
 
-// RunSpec is one test run: all three signals with Tenants pipelines each.
+// RunSpec is one test run: the signals of its components with Tenants pipelines each.
 type RunSpec struct {
-	Target  string // otel (plain collector) or tm (Telemetry Manager gateway)
-	Shape   string
-	Tenants int
-	Load    string
-	Health  string
-	Rep     int
-	Rate    int // load B only: items/s per signal per tenant
+	Target    string // otel (plain collector) or tm (Telemetry Manager gateway)
+	Component string // gateway, log-agent, metric-agent or all; empty means gateway
+	Shape     string
+	Tenants   int
+	Load      string
+	Health    string
+	Rep       int
+	Rate      int // load B only: items/s per signal per tenant
 }
 
-// ID is the run's name, e.g. otel-f1-A-t050-healthy-r1 or tm-f1-B1000-t050-healthy-r1.
+// ID is the run's name, e.g. otel-f1-A-t050-healthy-r1 or tm-log-agent-f1-B1000-t050-healthy-r1.
+// Gateway runs carry no component, so their IDs stay as before.
 func (s RunSpec) ID() string {
 	load := s.Load
 	if s.Load == LoadB {
 		load = fmt.Sprintf("B%d", s.Rate)
 	}
-	return fmt.Sprintf("%s-%s-%s-t%03d-%s-r%d", s.Target, strings.ToLower(s.Shape), load, s.Tenants, s.Health, s.Rep)
+	target := s.Target
+	if !s.gatewayOnly() {
+		target += "-" + s.Component
+	}
+	return fmt.Sprintf("%s-%s-%s-t%03d-%s-r%d", target, strings.ToLower(s.Shape), load, s.Tenants, s.Health, s.Rep)
+}
+
+func (s RunSpec) gatewayOnly() bool { return s.Component == "" || s.Component == ComponentGateway }
+
+// Components lists the components under test; all expands to gateway and both agents.
+func (s RunSpec) Components() []string {
+	if s.Component == ComponentAll {
+		return []string{ComponentGateway, ComponentLogAgent, ComponentMetricAgent}
+	}
+	if s.gatewayOnly() {
+		return []string{ComponentGateway}
+	}
+	return []string{s.Component}
+}
+
+// Has reports whether component c is under test in this run.
+func (s RunSpec) Has(c string) bool { return slices.Contains(s.Components(), c) }
+
+// Unit is one measured signal flow: a component and one signal it carries.
+type Unit struct {
+	Component string
+	Signal    Signal
+}
+
+// Key names the unit in results: the signal for the gateway (as before), component/signal for agents.
+func (u Unit) Key() string {
+	if u.Component == ComponentGateway {
+		return u.Signal.Name
+	}
+	return u.Component + "/" + u.Signal.Name
+}
+
+// Units lists the run's signal flows: the gateway carries all signals, each agent one.
+func (s RunSpec) Units() []Unit {
+	var units []Unit
+	for _, c := range s.Components() {
+		for _, sig := range Signals {
+			if c != ComponentGateway && agentSignal[c] != sig.Name {
+				continue
+			}
+			units = append(units, Unit{Component: c, Signal: sig})
+		}
+	}
+	return units
 }
 
 func (s RunSpec) Validate() error {
 	switch {
 	case s.Target != TargetOTel && s.Target != TargetTM:
 		return fmt.Errorf("-target must be otel or tm, got %q", s.Target)
+	case !s.gatewayOnly() && s.Component != ComponentLogAgent && s.Component != ComponentMetricAgent && s.Component != ComponentAll:
+		return fmt.Errorf("-component must be gateway, log-agent, metric-agent or all, got %q", s.Component)
+	case s.Target == TargetOTel && !s.gatewayOnly():
+		return fmt.Errorf("-target otel supports only -component gateway, got %q", s.Component)
+	case !s.gatewayOnly() && s.Health != Healthy:
+		return fmt.Errorf("-component %s supports only -health healthy, got %q", s.Component, s.Health)
 	case s.Shape != ShapeF1 && s.Shape != ShapeR1:
 		return fmt.Errorf("-shape must be F1 or R1, got %q", s.Shape)
 	case s.Target == TargetTM && s.Shape != ShapeF1:
@@ -118,16 +204,28 @@ func (s RunSpec) Validate() error {
 	return nil
 }
 
-// TenantRate is the generator rate of one tenant for one signal.
-func (s RunSpec) TenantRate(sig Signal) int {
+// TenantRate is the generator rate of one tenant for one unit.
+func (s RunSpec) TenantRate(u Unit) int {
 	if s.Load == LoadB {
-		return s.Rate
+		return max(1, s.Rate*s.share(u)/u.Signal.TotalRate)
 	}
-	return max(1, sig.TotalRate/s.Tenants)
+	return max(1, s.share(u)/s.Tenants)
 }
 
-// OfferedRate is the planned total items/s of one signal.
-func (s RunSpec) OfferedRate(sig Signal) int { return s.TenantRate(sig) * s.Tenants }
+// OfferedRate is the planned total items/s of one unit.
+func (s RunSpec) OfferedRate(u Unit) int { return s.TenantRate(u) * s.Tenants }
+
+// share is the unit's part of its signal's TotalRate: all runs give the agent AgentRate and
+// the gateway the rest, so the signal's total matches single-component runs.
+func (s RunSpec) share(u Unit) int {
+	if s.Component != ComponentAll || u.Signal.AgentRate == 0 {
+		return u.Signal.TotalRate
+	}
+	if u.Component == ComponentGateway {
+		return u.Signal.TotalRate - u.Signal.AgentRate
+	}
+	return u.Signal.AgentRate
+}
 
 // QueueSize mirrors TM: 256 batches split over the pipelines of one signal.
 func (s RunSpec) QueueSize() int { return max(1, 256/s.Tenants) }
@@ -174,11 +272,11 @@ func NextSearch(passed map[int]bool) (next int, done bool) {
 
 // SmallestFailing returns the smallest tenant count with a hard limit, or 0.
 func SmallestFailing(passed map[int]bool) int {
-	min := 0
+	smallest := 0
 	for n, ok := range passed {
-		if !ok && (min == 0 || n < min) {
-			min = n
+		if !ok && (smallest == 0 || n < smallest) {
+			smallest = n
 		}
 	}
-	return min
+	return smallest
 }
