@@ -355,9 +355,9 @@ func (r *Runner) checkGenerators(ctx context.Context, s spec.RunSpec, n nodes) s
 			continue
 		}
 		refused, _, _ := r.p.Value(ctx, fmt.Sprintf(`sum(rate(otelcol_receiver_refused_%s_total{%s}[1m]))`, sig.Item, sel.Run), time.Now())
-		if generatorsTooSlow(received, float64(s.OfferedRate(sig)), refused, loadCPU) {
+		if generatorsTooSlow(received, float64(s.OfferedRate(u)), refused, loadCPU) {
 			return fmt.Sprintf("%s generators send %.0f/s of planned %d/s on a saturated load node (CPU %.0f %%)",
-				sig.Name, received, s.OfferedRate(sig), 100*loadCPU)
+				sig.Name, received, s.OfferedRate(u), 100*loadCPU)
 		}
 	}
 	return ""

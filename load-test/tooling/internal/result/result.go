@@ -395,7 +395,7 @@ func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Rec
 		if s.Health == spec.Faulty {
 			healthyShare = float64(s.Tenants-1) / float64(s.Tenants)
 		}
-		offered := float64(s.OfferedRate(u.Signal)) * healthyShare
+		offered := float64(s.OfferedRate(u)) * healthyShare
 		held = append(held,
 			struct{ id, q string }{"H3:" + key, fmt.Sprintf(`(sum(rate(otelcol_exporter_enqueue_failed_%[1]s_total{%[2]s}[5m])) > 0) or (sum(rate(otelcol_exporter_send_failed_%[1]s_total{%[2]s}[5m])) > 0)`, t, sel.Healthy)},
 			struct{ id, q string }{"S1:" + key, fmt.Sprintf(`sum(rate(otelcol_receiver_refused_%s_total{%s}[5m])) > 0`, t, sel.Run)},

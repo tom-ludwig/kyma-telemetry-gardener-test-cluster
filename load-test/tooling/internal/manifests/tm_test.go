@@ -102,8 +102,8 @@ func TestLogAgentGenerator(t *testing.T) {
 		t.Errorf("placement %v labels %v", d.Spec.Template.Spec.NodeSelector, d.Spec.Template.Labels)
 	}
 	script := d.Spec.Template.Spec.Containers[0].Args[0]
-	logs := spec.Signals[2]
-	for _, want := range []string{"seq 0 2", fmt.Sprintf("-b %d -r %d", logs.BodyBytes, s.TenantRate(logs)), `"tenant=$(printf 'tenant-%03d' $i)"`} {
+	logs := spec.Unit{Component: spec.ComponentLogAgent, Signal: spec.Signals[2]}
+	for _, want := range []string{"seq 0 2", fmt.Sprintf("-b %d -r %d", logs.Signal.BodyBytes, s.TenantRate(logs)), `"tenant=$(printf 'tenant-%03d' $i)"`} {
 		if !strings.Contains(script, want) {
 			t.Errorf("script lacks %q:\n%s", want, script)
 		}

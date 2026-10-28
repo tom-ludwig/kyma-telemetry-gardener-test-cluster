@@ -144,11 +144,11 @@ func (r *Runner) newRecord(s spec.RunSpec, stats manifests.ConfigStats, startup 
 		Valid:   true,
 	}
 	for _, u := range s.Units() {
-		rec.Setup.RatePerTenant[u.Key()] = s.TenantRate(u.Signal)
-		rec.Setup.OfferedPerS[u.Key()] = s.OfferedRate(u.Signal)
+		rec.Setup.RatePerTenant[u.Key()] = s.TenantRate(u)
+		rec.Setup.OfferedPerS[u.Key()] = s.OfferedRate(u)
 		rec.Setup.Generator.LogBodyBytes = max(rec.Setup.Generator.LogBodyBytes, u.Signal.BodyBytes)
 		if u.Component == spec.ComponentGateway {
-			rec.Setup.Generator.WorkersPerTenant[u.Key()] = manifests.Workers(s.TenantRate(u.Signal))
+			rec.Setup.Generator.WorkersPerTenant[u.Key()] = manifests.Workers(s.TenantRate(u))
 			continue
 		}
 		image, err := manifests.AgentGeneratorImage(u.Component)

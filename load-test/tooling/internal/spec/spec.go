@@ -70,6 +70,7 @@ type Signal struct {
 	Item      string `json:"item"`
 	FilterKey string `json:"filterKey"`
 	TotalRate int    `json:"totalRate"`
+	AgentRate int    `json:"agentRate"`
 	BodyBytes int    `json:"bodyBytes"`
 }
 
@@ -97,6 +98,9 @@ func loadSignals(raw []byte) ([]Signal, error) {
 	for _, s := range file.Signals {
 		if s.Name == "" || s.Item == "" || s.FilterKey == "" || s.TotalRate <= 0 {
 			return nil, fmt.Errorf("signal %q: name, item, filterKey and totalRate are required", s.Name)
+		}
+		if s.AgentRate < 0 || s.AgentRate >= s.TotalRate {
+			return nil, fmt.Errorf("signal %q: agentRate must be 0..totalRate-1", s.Name)
 		}
 	}
 	return file.Signals, nil
@@ -200,16 +204,28 @@ func (s RunSpec) Validate() error {
 	return nil
 }
 
-// TenantRate is the generator rate of one tenant for one signal.
-func (s RunSpec) TenantRate(sig Signal) int {
+// TenantRate is the generator rate of one tenant for one unit.
+func (s RunSpec) TenantRate(u Unit) int {
 	if s.Load == LoadB {
-		return s.Rate
+		return max(1, s.Rate*s.share(u)/u.Signal.TotalRate)
 	}
-	return max(1, sig.TotalRate/s.Tenants)
+	return max(1, s.share(u)/s.Tenants)
 }
 
-// OfferedRate is the planned total items/s of one signal.
-func (s RunSpec) OfferedRate(sig Signal) int { return s.TenantRate(sig) * s.Tenants }
+// OfferedRate is the planned total items/s of one unit.
+func (s RunSpec) OfferedRate(u Unit) int { return s.TenantRate(u) * s.Tenants }
+
+// share is the unit's part of its signal's TotalRate: all runs give the agent AgentRate and
+// the gateway the rest, so the signal's total matches single-component runs.
+func (s RunSpec) share(u Unit) int {
+	if s.Component != ComponentAll || u.Signal.AgentRate == 0 {
+		return u.Signal.TotalRate
+	}
+	if u.Component == ComponentGateway {
+		return u.Signal.TotalRate - u.Signal.AgentRate
+	}
+	return u.Signal.AgentRate
+}
 
 // QueueSize mirrors TM: 256 batches split over the pipelines of one signal.
 func (s RunSpec) QueueSize() int { return max(1, 256/s.Tenants) }

@@ -269,7 +269,7 @@ func Generators(s spec.RunSpec, duration time.Duration) ([]client.Object, error)
 	var objs []client.Object
 	for _, u := range s.Units() {
 		if u.Component == spec.ComponentGateway {
-			objs = append(objs, generator(&tmpl, s, u.Signal, duration))
+			objs = append(objs, generator(&tmpl, s, u, duration))
 			continue
 		}
 		gen, err := agentGenerators(s, u)
@@ -313,17 +313,17 @@ func agentGenerators(s spec.RunSpec, u spec.Unit) ([]client.Object, error) {
 	d.Labels = merge(d.Labels, RunLabels(s))
 	d.Spec.Template.Labels = merge(d.Spec.Template.Labels, RunLabels(s))
 	if u.Component == spec.ComponentLogAgent {
-		d.Spec.Template.Spec.Containers[0].Args = []string{logAgentScript(s, u.Signal)}
+		d.Spec.Template.Spec.Containers[0].Args = []string{logAgentScript(s, u)}
 		return []client.Object{&d}, nil
 	}
-	d.Spec.Template.Spec.Containers[0].Args = []string{metricAgentScript(s, u.Signal)}
+	d.Spec.Template.Spec.Containers[0].Args = []string{metricAgentScript(s, u)}
 	return append([]client.Object{&d}, metricAgentServices(s, d.Spec.Selector.MatchLabels)...), nil
 }
 
 // metricAgentScript launches one avalanche per tenant on port MetricPortBase+i. Each serves
 // gauges only with fixed series, so one scrape per interval yields the tenant's data points/s.
-func metricAgentScript(s spec.RunSpec, sig spec.Signal) string {
-	series := max(1, s.TenantRate(sig)*spec.ScrapeIntervalS/gaugesPerTenant)
+func metricAgentScript(s spec.RunSpec, u spec.Unit) string {
+	series := max(1, s.TenantRate(u)*spec.ScrapeIntervalS/gaugesPerTenant)
 	return fmt.Sprintf(`for i in $(seq 0 %d); do
   avalanche --port=$((%d + i)) \
     --gauge-metric-count=%d --counter-metric-count=0 --histogram-metric-count=0 \
@@ -364,12 +364,12 @@ func metricAgentServices(s spec.RunSpec, selector map[string]string) []client.Ob
 // logAgentScript launches one stdout-log-generator per tenant. Each writes JSON lines of
 // BodyBytes with its tenant as a field, which the log agent parses into log attributes.
 // The generator has no duration flag; the tool deletes the Deployment when the load stops.
-func logAgentScript(s spec.RunSpec, sig spec.Signal) string {
+func logAgentScript(s spec.RunSpec, u spec.Unit) string {
 	return fmt.Sprintf(`for i in $(seq 0 %d); do
   stdout-log-generator --format=json -b %d -r %d -f "tenant=$(printf 'tenant-%%03d' $i)" &
 done
 wait
-`, s.Tenants-1, sig.BodyBytes, s.TenantRate(sig))
+`, s.Tenants-1, u.Signal.BodyBytes, s.TenantRate(u))
 }
 
 // generatorEndpoint is the OTLP gRPC endpoint generators send to: our collector for otel,
@@ -381,7 +381,8 @@ func generatorEndpoint(s spec.RunSpec) string {
 	return "otelcol.otel-load-test.svc:4317"
 }
 
-func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, duration time.Duration) *appsv1.Deployment {
+func generator(tmpl *appsv1.Deployment, s spec.RunSpec, u spec.Unit, duration time.Duration) *appsv1.Deployment {
+	sig := u.Signal
 	d := tmpl.DeepCopy()
 	d.Name = fmt.Sprintf("gen-%s", sig.Name)
 	app := map[string]string{"app": d.Name}
@@ -391,13 +392,14 @@ func generator(tmpl *appsv1.Deployment, s spec.RunSpec, sig spec.Signal, duratio
 
 	c := &d.Spec.Template.Spec.Containers[0]
 	c.Name = sig.Name
-	c.Args = []string{generatorScript(s, sig, duration)}
+	c.Args = []string{generatorScript(s, u, duration)}
 	return d
 }
 
 // generatorScript builds the shell script that launches one telemetrygen per tenant.
-func generatorScript(s spec.RunSpec, sig spec.Signal, duration time.Duration) string {
-	rate := s.TenantRate(sig)
+func generatorScript(s spec.RunSpec, u spec.Unit, duration time.Duration) string {
+	sig := u.Signal
+	rate := s.TenantRate(u)
 	workers := Workers(rate)
 	var b strings.Builder
 	if sig.BodyBytes > 0 {

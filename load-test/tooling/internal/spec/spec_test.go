@@ -24,14 +24,29 @@ func TestRunID(t *testing.T) {
 }
 
 func TestRates(t *testing.T) {
-	traces := Signals[0]
+	traces := Unit{Component: ComponentGateway, Signal: Signals[0]}
 	a := RunSpec{Tenants: 100, Load: LoadA}
-	if got := a.TenantRate(traces); got != traces.TotalRate/100 {
-		t.Errorf("load A rate = %d, want %d", got, traces.TotalRate/100)
+	if got := a.TenantRate(traces); got != traces.Signal.TotalRate/100 {
+		t.Errorf("load A rate = %d, want %d", got, traces.Signal.TotalRate/100)
 	}
 	b := RunSpec{Tenants: 100, Load: LoadB, Rate: 1000}
 	if got := b.OfferedRate(traces); got != 100000 {
 		t.Errorf("load B offered = %d, want 100000", got)
+	}
+	// All runs split a signal between gateway and agent; the sum stays the total.
+	all := RunSpec{Component: ComponentAll, Tenants: 1, Load: LoadA}
+	for _, sig := range Signals {
+		gw := all.OfferedRate(Unit{Component: ComponentGateway, Signal: sig})
+		if sig.AgentRate == 0 {
+			if gw != sig.TotalRate {
+				t.Errorf("all %s gateway = %d, want %d", sig.Name, gw, sig.TotalRate)
+			}
+			continue
+		}
+		agent := all.OfferedRate(Unit{Component: ComponentLogAgent, Signal: sig})
+		if agent != sig.AgentRate || gw+agent != sig.TotalRate {
+			t.Errorf("all %s: gateway %d + agent %d, want %d of %d to the agent", sig.Name, gw, agent, sig.AgentRate, sig.TotalRate)
+		}
 	}
 	if got := (RunSpec{Tenants: 100}).QueueSize(); got != 2 {
 		t.Errorf("queue size at 100 tenants = %d, want 2", got)
