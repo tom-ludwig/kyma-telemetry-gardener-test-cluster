@@ -32,6 +32,10 @@ spec:
       enabled: false
     otlp:
       enabled: false
+  # The gateway still hands this pipeline every OTLP metric of the tests; drop all of it.
+  filter:
+    - conditions:
+        - resource.attributes["k8s.namespace.name"] != "kube-node-lease"
   output:
     otlp:
       endpoint:
