@@ -85,14 +85,14 @@ func sourcesOf(s spec.RunSpec, sig spec.Signal) []string {
 
 // tenantCondition is true for items that are not tenant i's, by where each source puts the
 // tenant: the gateway's generators on the resource, the log generator as a JSON field the log
-// agent parses into log attributes, and the metric generator as its scrape port, which the
-// prometheus receiver sets as the string resource attribute server.port.
+// agent parses into log attributes, and the metric generator as a constant label, which the
+// prometheus receiver turns into a datapoint attribute.
 func tenantCondition(source string, i int) string {
 	if source == spec.ComponentLogAgent {
 		return fmt.Sprintf(`log.attributes["tenant"] != %q`, spec.TenantID(i))
 	}
 	if source == spec.ComponentMetricAgent {
-		return fmt.Sprintf(`resource.attributes["server.port"] != "%d"`, spec.MetricPortBase+i)
+		return fmt.Sprintf(`datapoint.attributes["tenant"] != %q`, spec.TenantID(i))
 	}
 	return fmt.Sprintf(`resource.attributes["tenant"] != %q`, spec.TenantID(i))
 }

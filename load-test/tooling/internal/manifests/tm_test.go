@@ -121,7 +121,7 @@ func TestTMMetricAgentPipeline(t *testing.T) {
 	}
 	u := objs[1].(*unstructured.Unstructured)
 	filter, _, _ := unstructured.NestedSlice(u.Object, "spec", "filter")
-	if cond := filter[0].(map[string]any)["conditions"].([]any)[0]; cond != `resource.attributes["server.port"] != "9002"` {
+	if cond := filter[0].(map[string]any)["conditions"].([]any)[0]; cond != `datapoint.attributes["tenant"] != "tenant-001"` {
 		t.Errorf("filter %q", cond)
 	}
 	prom, _, _ := unstructured.NestedBool(u.Object, "spec", "input", "prometheus", "enabled")
@@ -137,24 +137,37 @@ func TestMetricAgentGenerator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 1 Deployment + 1 Service per tenant
-	if len(objs) != 4 {
-		t.Fatalf("got %d objects, want 4", len(objs))
+	// 9000 dp/s over 3 tenants, 30 s scrapes: 90000 samples per tenant, so 2 targets of 45000
+	// (10 gauges × 4500 series); 1 Deployment + 1 Service per tenant and target
+	if len(objs) != 7 {
+		t.Fatalf("got %d objects, want 7", len(objs))
 	}
 	d := objs[0].(*appsv1.Deployment)
 	if len(d.Spec.Template.Annotations) != 0 {
 		t.Errorf("generator pod must not be annotated: %v", d.Spec.Template.Annotations)
 	}
-	// 9000 dp/s over 3 tenants, 30 s scrapes, 10 gauges: 9000 series per tenant
 	script := d.Spec.Template.Spec.Containers[0].Args[0]
-	for _, want := range []string{"seq 0 2", "--port=$((9001 + i))", "--series-count=9000", "--series-interval=0"} {
+	for _, want := range []string{"seq 0 2", "seq 0 1", "--port=$((9001 + i * 2 + j))", `--const-label="tenant=$(printf 'tenant-%03d' $i)"`, "--series-count=4500", "--series-interval=0"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("script lacks %q:\n%s", want, script)
 		}
 	}
-	svc := objs[3].(*corev1.Service)
-	if svc.Annotations["prometheus.io/port"] != "9003" || svc.Spec.Selector["app"] != "gen-metric-agent" || svc.Labels[RunLabel] != s.ID() {
+	svc := objs[6].(*corev1.Service)
+	if svc.Name != "gen-metric-agent-p-002-1" || svc.Annotations["prometheus.io/port"] != "9006" || svc.Spec.Selector["app"] != "gen-metric-agent" || svc.Labels[RunLabel] != s.ID() {
 		t.Errorf("service %s: annotations %v selector %v labels %v", svc.Name, svc.Annotations, svc.Spec.Selector, svc.Labels)
+	}
+}
+
+// Every target stays below TM's sample limit and together they serve the tenant's rate.
+func TestMetricTargets(t *testing.T) {
+	u := spec.Unit{Component: spec.ComponentMetricAgent, Signal: spec.Signals[1]}
+	for _, tenants := range []int{1, 2, 3, 5, 10, 100} {
+		s := spec.RunSpec{Component: spec.ComponentMetricAgent, Tenants: tenants, Load: spec.LoadA}
+		targets, series := metricTargets(s, u)
+		samples := s.TenantRate(u) * spec.ScrapeIntervalS
+		if series*gaugesPerTarget > maxSamplesPerTarget || targets*series*gaugesPerTarget < samples-targets*gaugesPerTarget {
+			t.Errorf("%d tenants: %d targets × %d series × %d gauges for %d samples", tenants, targets, series, gaugesPerTarget, samples)
+		}
 	}
 }
 
@@ -170,7 +183,7 @@ func TestTMAllPipelines(t *testing.T) {
 	}
 	want := map[string]string{
 		"logs-p-000":    `resource.attributes["tenant"] != "tenant-000" and log.attributes["tenant"] != "tenant-000"`,
-		"metrics-p-000": `resource.attributes["tenant"] != "tenant-000" and resource.attributes["server.port"] != "9001"`,
+		"metrics-p-000": `resource.attributes["tenant"] != "tenant-000" and datapoint.attributes["tenant"] != "tenant-000"`,
 		"traces-p-000":  `resource.attributes["tenant"] != "tenant-000"`,
 	}
 	for _, o := range objs {
@@ -192,9 +205,10 @@ func TestTMAllPipelines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 3 telemetrygen + log generator + metric generator + 2 metric Services
-	if len(gens) != 7 {
-		t.Errorf("got %d generator objects, want 7", len(gens))
+	// 3 telemetrygen + log generator + metric generator + 6 metric Services (the agent's
+	// 7000 dp/s over 2 tenants is 105000 samples per tenant, so 3 targets each)
+	if len(gens) != 11 {
+		t.Errorf("got %d generator objects, want 11", len(gens))
 	}
 }
 

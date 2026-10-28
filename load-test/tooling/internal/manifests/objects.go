@@ -300,8 +300,13 @@ var agentGeneratorTemplates = map[string]string{
 	spec.ComponentMetricAgent: "metric-generator.yaml",
 }
 
-// gaugesPerTenant is the avalanche metric count; the series per metric set the volume.
-const gaugesPerTenant = 10
+const (
+	// gaugesPerTarget is the avalanche metric count; the series per metric set the volume.
+	gaugesPerTarget = 10
+	// maxSamplesPerTarget stays below TM's prometheus sample_limit (50000) per scrape target;
+	// above it the agent drops the whole scrape.
+	maxSamplesPerTarget = 45000
+)
 
 // AgentGeneratorImage returns the generator image of a node agent, for the result record.
 func AgentGeneratorImage(component string) (string, error) {
@@ -329,47 +334,65 @@ func agentGenerators(s spec.RunSpec, u spec.Unit, nodeSelector map[string]string
 		d.Spec.Template.Spec.Containers[0].Args = []string{logAgentScript(s, u)}
 		return []client.Object{&d}, nil
 	}
-	d.Spec.Template.Spec.Containers[0].Args = []string{metricAgentScript(s, u)}
-	return append([]client.Object{&d}, metricAgentServices(s, d.Spec.Selector.MatchLabels)...), nil
+	targets, series := metricTargets(s, u)
+	d.Spec.Template.Spec.Containers[0].Args = []string{metricAgentScript(s, targets, series)}
+	return append([]client.Object{&d}, metricAgentServices(s, targets, d.Spec.Selector.MatchLabels)...), nil
 }
 
-// metricAgentScript launches one avalanche per tenant on port MetricPortBase+i. Each serves
-// gauges only with fixed series, so one scrape per interval yields the tenant's data points/s.
-func metricAgentScript(s spec.RunSpec, u spec.Unit) string {
-	series := max(1, s.TenantRate(u)*spec.ScrapeIntervalS/gaugesPerTenant)
+// metricTargets splits one tenant's samples per scrape over as many scrape targets as needed
+// to keep each below maxSamplesPerTarget; it returns the targets per tenant and the series
+// per gauge of each target.
+func metricTargets(s spec.RunSpec, u spec.Unit) (targets, series int) {
+	samples := s.TenantRate(u) * spec.ScrapeIntervalS
+	targets = (samples + maxSamplesPerTarget - 1) / maxSamplesPerTarget
+	return targets, max(1, samples/targets/gaugesPerTarget)
+}
+
+// metricPort is the port of tenant i's target j.
+func metricPort(i, j, targets int) int32 { return int32(spec.MetricPortBase + i*targets + j) }
+
+// metricAgentScript launches one avalanche per tenant and target on port metricPort(i, j).
+// Each serves gauges only with fixed series and the tenant as a constant label, so one scrape
+// per interval yields the tenant's data points/s.
+func metricAgentScript(s spec.RunSpec, targets, series int) string {
 	return fmt.Sprintf(`for i in $(seq 0 %d); do
-  avalanche --port=$((%d + i)) \
-    --gauge-metric-count=%d --counter-metric-count=0 --histogram-metric-count=0 \
-    --native-histogram-metric-count=0 --summary-metric-count=0 \
-    --series-count=%d --label-count=2 \
-    --series-interval=0 --metric-interval=0 --series-change-interval=0 &
+  for j in $(seq 0 %d); do
+    avalanche --port=$((%d + i * %d + j)) \
+      --const-label="tenant=$(printf 'tenant-%%03d' $i)" \
+      --gauge-metric-count=%d --counter-metric-count=0 --histogram-metric-count=0 \
+      --native-histogram-metric-count=0 --summary-metric-count=0 \
+      --series-count=%d --label-count=2 \
+      --series-interval=0 --metric-interval=0 --series-change-interval=0 &
+  done
 done
 wait
-`, s.Tenants-1, spec.MetricPortBase, gaugesPerTenant, series)
+`, s.Tenants-1, targets-1, spec.MetricPortBase, targets, gaugesPerTarget, series)
 }
 
-// metricAgentServices gives every tenant's avalanche its own scrape target: one Service per
-// tenant on the generator pod, annotated with that tenant's port.
-func metricAgentServices(s spec.RunSpec, selector map[string]string) []client.Object {
+// metricAgentServices gives every avalanche its own scrape target: one Service per tenant and
+// target on the generator pod, annotated with that target's port.
+func metricAgentServices(s spec.RunSpec, targets int, selector map[string]string) []client.Object {
 	var objs []client.Object
 	for i := range s.Tenants {
-		port := int32(spec.MetricPortBase + i)
-		objs = append(objs, &corev1.Service{
-			TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("gen-metric-agent-%s", spec.PipelineID(i)),
-				Namespace: LoadNamespace,
-				Labels:    RunLabels(s),
-				Annotations: map[string]string{
-					"prometheus.io/scrape": "true",
-					"prometheus.io/port":   fmt.Sprint(port),
+		for j := range targets {
+			port := metricPort(i, j, targets)
+			objs = append(objs, &corev1.Service{
+				TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Service"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fmt.Sprintf("gen-metric-agent-%s-%d", spec.PipelineID(i), j),
+					Namespace: LoadNamespace,
+					Labels:    RunLabels(s),
+					Annotations: map[string]string{
+						"prometheus.io/scrape": "true",
+						"prometheus.io/port":   fmt.Sprint(port),
+					},
 				},
-			},
-			Spec: corev1.ServiceSpec{
-				Selector: selector,
-				Ports:    []corev1.ServicePort{{Name: "metrics", Port: port, TargetPort: intstr.FromInt32(port)}},
-			},
-		})
+				Spec: corev1.ServiceSpec{
+					Selector: selector,
+					Ports:    []corev1.ServicePort{{Name: "metrics", Port: port, TargetPort: intstr.FromInt32(port)}},
+				},
+			})
+		}
 	}
 	return objs
 }

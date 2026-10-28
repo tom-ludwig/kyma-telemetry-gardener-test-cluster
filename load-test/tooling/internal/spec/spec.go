@@ -44,7 +44,7 @@ const (
 	// ScrapeIntervalS is TM's default Prometheus scrape interval; metric generators size their
 	// series so that one scrape per interval yields the planned data points/s.
 	ScrapeIntervalS = 30
-	// MetricPortBase is the port of tenant 0's metric generator; tenant i serves on base+i.
+	// MetricPortBase is the port of the first metric generator target; the others follow it.
 	MetricPortBase = 9001
 )
 
