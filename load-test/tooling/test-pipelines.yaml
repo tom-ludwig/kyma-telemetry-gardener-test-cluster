@@ -35,5 +35,6 @@ spec:
   output:
     otlp:
       endpoint:
-        value: http://localhost:4318 # never called, nothing is collected
+        # node and cluster metrics of the runtime input pass the namespace filter (~1 dp/s)
+        value: http://vmsingle-load-test.load-test-backends.svc:8428/opentelemetry
       protocol: http
