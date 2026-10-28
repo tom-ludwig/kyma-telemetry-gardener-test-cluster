@@ -1,0 +1,39 @@
+apiVersion: telemetry.kyma-project.io/v1beta1
+kind: LogPipeline
+metadata:
+  name: test-pipeline
+spec:
+  input:
+    runtime:
+      enabled: true
+      namespaces:
+        include: [kube-node-lease]
+    otlp:
+      enabled: false
+  output:
+    otlp:
+      endpoint:
+        value: http://localhost:4318 # never called, nothing is collected
+      protocol: http
+---
+apiVersion: telemetry.kyma-project.io/v1beta1
+kind: MetricPipeline
+metadata:
+  name: test-pipeline
+spec:
+  input:
+    runtime:
+      enabled: true
+      namespaces:
+        include: [kube-node-lease]
+    prometheus:
+      enabled: false
+    istio:
+      enabled: false
+    otlp:
+      enabled: false
+  output:
+    otlp:
+      endpoint:
+        value: http://localhost:4318 # never called, nothing is collected
+      protocol: http
