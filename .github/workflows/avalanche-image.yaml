@@ -2,7 +2,7 @@ name: avalanche image
 
 on:
   push:
-    branches: [main, feat/tm-agent-load-test]
+    branches: [main]
     paths: ["load-test/avalanche/**", ".github/workflows/avalanche-image.yaml"]
   workflow_dispatch:
 
