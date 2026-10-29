@@ -20,7 +20,7 @@ spec:
       memory: "256Mi"
       cpu: "50m"
     limits:
-      memory: "1Gi"
+      memory: "2Gi"
 
   storage:
     storageClassName: "default"
@@ -28,4 +28,4 @@ spec:
       - ReadWriteOnce
     resources:
       requests:
-        storage: 2Gi
+        storage: 5Gi
