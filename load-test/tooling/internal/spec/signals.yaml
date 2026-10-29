@@ -15,5 +15,5 @@ signals:
     item: log_records
     filterKey: log_conditions
     totalRate: 6000
-    agentRate: 5000
+    agentRate: 1000
     bodyBytes: 2000 # log body size
