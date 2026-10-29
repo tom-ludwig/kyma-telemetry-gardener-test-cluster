@@ -18,7 +18,8 @@ spec:
     manager:
       container:
         image:
-          # repository: ghcr.io/tom-ludwig/telemetry-manager/telemetry-manager:latest
+          # 1.74.1 with higher agent and gateway base memory and the log agent memory_limiter at 75/15
+          repository: ghcr.io/louis-kauer/telemetry-manager:1.74.1-loadtest-mem
           pullPolicy: "Always"
     fullnameOverride: telemetry
     default:
