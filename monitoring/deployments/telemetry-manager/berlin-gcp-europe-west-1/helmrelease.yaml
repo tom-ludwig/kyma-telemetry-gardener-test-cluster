@@ -18,7 +18,7 @@ spec:
     manager:
       container:
         image:
-          repository: ghcr.io/tom-ludwig/telemetry-manager/telemetry-manager:latest
+          # repository: ghcr.io/tom-ludwig/telemetry-manager/telemetry-manager:latest
           pullPolicy: "Always"
     fullnameOverride: telemetry
     default:
