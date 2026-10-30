@@ -1,0 +1,464 @@
+2026/10/26 14:49:47 tm-f1-A-t010-healthy-r1: preflight capacity and disk checks skipped (-skip-preflight)
+2026/10/26 14:49:56 tm-f1-A-t010-healthy-r1: load on, measuring 14:51:56 – 15:01:56
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t010-healthy-r1","args":["-target=tm","-shape=F1","-tenants=10","-load=A","-warmup=2m","-steady=10m","-cooldown=2m","-skip-preflight"],"tool_commit":"d46909f0edf2704355f6888cb0d2b9da4ea4696b","date":"2026-10-26T14:49:56.125304612Z","collector_image":"","start":"2026-10-26T14:49:56.125001569Z","steady_start":"2026-10-26T14:51:56.125001569Z","steady_end":"2026-10-26T15:01:56.125001569Z","end":"2026-10-26T15:03:56.717886137Z"},"setup":{"target":"tm","shape":"F1","load":"A","tenants":10,"health":"healthy","rate_per_tenant":{"logs":600,"metrics":900,"traces":1000},"offered_per_s":{"logs":6000,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":25,"phases_s":{"warmup":120,"steady":600,"cooldown":120},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":2,"metrics":2,"traces":2},"log_body_bytes":2000}},"env":{"collector_node":{"name":"shoot--berlin--tom-evaluation-worker-otelcol-z1-d5556-ft4vb","machine_type":"n1-standard-4","cpu":3.92,"memory_gib":13.53738784790039},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w","machine_type":"n4-highcpu-8","cpu":7.92,"memory_gib":14.519500732421875}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"signals":{"logs":{"received_per_s":5998.333333333333,"exported_per_s":5998.08,"exported_healthy_per_s":5998.08,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.04},"metrics":{"received_per_s":8996.966666666665,"exported_per_s":8992.426666666666,"exported_healthy_per_s":8992.426666666666,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.04},"traces":{"received_per_s":9993.333333333334,"exported_per_s":9992.533333333333,"exported_healthy_per_s":9992.533333333333,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.04}},"collector":{"rss_max_mib":248.01953125,"working_set_max_mib":212.7734375,"cpu_avg":0.6065113133333333,"cpu_p95":0.7155801091666667,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":null,"all":[],"hard":false},"valid":true}}
+2026/10/26 15:03:59 tm-f1-A-t010-healthy-r1: done, valid=true, first limit <nil>
+[sofka] pod succeeded; stream ended
+
+{
+  "timestamp": "2026-10-26 16:21:44.430",
+  "timeEpochMs": 1793028104430,
+  "timeEpochNs": "1793028104430880862",
+  "timeLocal": "2026-10-26 16:21:44",
+  "timeUtc": "2026-10-26 15:21:44",
+  "timeFromNow": "2 hours ago",
+  "logLevel": "unknown",
+  "displayLevel": "unk",
+  "line": "loadtest result",
+  "labels": {
+    "_stream": "{kubernetes.container_name=\"loadtest\",kubernetes.pod_name=\"loadtest-w8mfm\",kubernetes.pod_namespace=\"otel-load-test\",kubernetes.pod_node_name=\"shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w\"}",
+    "_stream_id": "000000000000000014d09c0e395e3ae5ef27816d06c8c6fb",
+    "cluster": "berlin-gcp-europe-west-1",
+    "kubernetes.container_id": "containerd://5377808a33184f96d99c594566eee6dac380fe0c4c403df44cda84c0530dd0dc",
+    "kubernetes.container_name": "loadtest",
+    "kubernetes.pod_ip": "100.64.0.145",
+    "kubernetes.pod_labels.batch.kubernetes.io/controller-uid": "fdc4d3dd-4273-4ccb-98fc-86112145d689",
+    "kubernetes.pod_labels.batch.kubernetes.io/job-name": "loadtest",
+    "kubernetes.pod_labels.controller-uid": "fdc4d3dd-4273-4ccb-98fc-86112145d689",
+    "kubernetes.pod_labels.job-name": "loadtest",
+    "kubernetes.pod_labels.topology.kubernetes.io/region": "europe-west1",
+    "kubernetes.pod_labels.topology.kubernetes.io/zone": "europe-west1-d",
+    "kubernetes.pod_name": "loadtest-w8mfm",
+    "kubernetes.pod_namespace": "otel-load-test",
+    "kubernetes.pod_node_name": "shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w",
+    "result.collector.cpu_avg": "1.0602917016666666",
+    "result.collector.cpu_p95": "1.267501854166666",
+    "result.collector.evicted": "false",
+    "result.collector.oom_killed": "false",
+    "result.collector.restarts": "0",
+    "result.collector.rss_max_mib": "284.24609375",
+    "result.collector.working_set_max_mib": "247.046875",
+    "result.config.bytes": "0",
+    "result.config.config_maps": "0",
+    "result.config.exporters": "0",
+    "result.config.processor_instances": "0",
+    "result.config.service_pipelines": "0",
+    "result.config.startup_s": "0",
+    "result.env.collector_node.cpu": "3.92",
+    "result.env.collector_node.machine_type": "n1-standard-4",
+    "result.env.collector_node.memory_gib": "13.53738784790039",
+    "result.env.collector_node.name": "shoot--berlin--tom-evaluation-worker-otelcol-z1-d5556-ft4vb",
+    "result.env.load_nodes": [
+      {
+        "name": "shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w",
+        "machine_type": "n4-highcpu-8",
+        "cpu": 7.92,
+        "memory_gib": 14.519500732421875
+      }
+    ],
+    "result.limit.all": [],
+    "result.limit.hard": "false",
+    "result.run.args": [
+      "-target=tm",
+      "-shape=F1",
+      "-tenants=20",
+      "-load=A",
+      "-warmup=2m",
+      "-steady=10m",
+      "-cooldown=2m",
+      "-skip-preflight"
+    ],
+    "result.run.date": "2026-10-26T15:07:44.068167857Z",
+    "result.run.end": "2026-10-26T15:21:44.307462843Z",
+    "result.run.id": "tm-f1-A-t020-healthy-r1",
+    "result.run.start": "2026-10-26T15:07:44.067868031Z",
+    "result.run.steady_end": "2026-10-26T15:19:44.067868031Z",
+    "result.run.steady_start": "2026-10-26T15:09:44.067868031Z",
+    "result.run.tool_commit": "d46909f0edf2704355f6888cb0d2b9da4ea4696b",
+    "result.setup.generator.image": "ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0",
+    "result.setup.generator.log_body_bytes": "2000",
+    "result.setup.generator.workers_per_tenant.logs": "1",
+    "result.setup.generator.workers_per_tenant.metrics": "1",
+    "result.setup.generator.workers_per_tenant.traces": "1",
+    "result.setup.health": "healthy",
+    "result.setup.load": "A",
+    "result.setup.mem_limit_mib": "4096",
+    "result.setup.offered_per_s.logs": "6000",
+    "result.setup.offered_per_s.metrics": "9000",
+    "result.setup.offered_per_s.traces": "10000",
+    "result.setup.phases_s.cooldown": "120",
+    "result.setup.phases_s.steady": "600",
+    "result.setup.phases_s.warmup": "120",
+    "result.setup.queue_size_per_exporter": "12",
+    "result.setup.rate_per_tenant.logs": "300",
+    "result.setup.rate_per_tenant.metrics": "450",
+    "result.setup.rate_per_tenant.traces": "500",
+    "result.setup.shape": "F1",
+    "result.setup.target": "tm",
+    "result.setup.tenants": "20",
+    "result.signals.logs.enqueue_failed": "0",
+    "result.signals.logs.exported_healthy_per_s": "5976.746666666667",
+    "result.signals.logs.exported_per_s": "5976.746666666667",
+    "result.signals.logs.per_pipeline_min_max": [
+      0,
+      0
+    ],
+    "result.signals.logs.queue_util_max": "0.08333333333333333",
+    "result.signals.logs.received_per_s": "5977",
+    "result.signals.logs.refused": "0",
+    "result.signals.logs.send_failed": "0",
+    "result.signals.metrics.enqueue_failed": "0",
+    "result.signals.metrics.exported_healthy_per_s": "8954.88",
+    "result.signals.metrics.exported_per_s": "8954.88",
+    "result.signals.metrics.per_pipeline_min_max": [
+      0,
+      0
+    ],
+    "result.signals.metrics.queue_util_max": "0.08333333333333333",
+    "result.signals.metrics.received_per_s": "8960.966666666667",
+    "result.signals.metrics.refused": "0",
+    "result.signals.metrics.send_failed": "0",
+    "result.signals.traces.enqueue_failed": "0",
+    "result.signals.traces.exported_healthy_per_s": "9977.173333333332",
+    "result.signals.traces.exported_per_s": "9977.173333333332",
+    "result.signals.traces.per_pipeline_min_max": [
+      0,
+      0
+    ],
+    "result.signals.traces.queue_util_max": "0.08333333333333333",
+    "result.signals.traces.received_per_s": "9978",
+    "result.signals.traces.refused": "0",
+    "result.signals.traces.send_failed": "0",
+    "result.valid": "true"
+  },
+  "fields": {
+    "detected_level": "unknown"
+  }
+}
+
+---
+2026/10/26 17:43:13 tm-f1-A-t030-healthy-r1: preflight capacity and disk checks skipped (-skip-preflight)
+2026/10/26 17:43:23 tm-f1-A-t030-healthy-r1: load on, measuring 17:45:23 – 17:55:23
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t030-healthy-r1","args":["-target=tm","-shape=F1","-tenants=30","-load=A","-warmup=2m","-steady=10m","-cooldown=2m","-skip-preflight"],"tool_commit":"d46909f0edf2704355f6888cb0d2b9da4ea4696b","date":"2026-10-26T17:43:23.397988105Z","collector_image":"","start":"2026-10-26T17:43:23.397697971Z","steady_start":"2026-10-26T17:45:23.397697971Z","steady_end":"2026-10-26T17:55:23.397697971Z","end":"2026-10-26T17:57:23.7543287Z"},"setup":{"target":"tm","shape":"F1","load":"A","tenants":30,"health":"healthy","rate_per_tenant":{"logs":200,"metrics":300,"traces":333},"offered_per_s":{"logs":6000,"metrics":9000,"traces":9990},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":8,"phases_s":{"warmup":120,"steady":600,"cooldown":120},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":1,"metrics":1,"traces":1},"log_body_bytes":2000}},"env":{"collector_node":{"name":"shoot--berlin--tom-evaluation-worker-otelcol-z1-d5556-ft4vb","machine_type":"n1-standard-4","cpu":3.92,"memory_gib":13.53738784790039},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w","machine_type":"n4-highcpu-8","cpu":7.92,"memory_gib":14.519500732421875}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"signals":{"logs":{"received_per_s":1871.8333333333333,"exported_per_s":1883.9533333333334,"exported_healthy_per_s":1883.9533333333334,"per_pipeline_min_max":[0,0],"refused":247600,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.125},"metrics":{"received_per_s":2800.9666666666667,"exported_per_s":2791.1666666666665,"exported_healthy_per_s":2791.1666666666665,"per_pipeline_min_max":[0,0],"refused":246700,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.125},"traces":{"received_per_s":8718.521666666667,"exported_per_s":8760.598333333333,"exported_healthy_per_s":8760.598333333333,"per_pipeline_min_max":[0,0],"refused":248213,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.125}},"collector":{"rss_max_mib":254.3671875,"working_set_max_mib":181.99609375,"cpu_avg":2.4345091516666666,"cpu_p95":2.711713445833333,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":{"id":"S1","signal":"traces","at_s":120.000302029},"all":[{"id":"S1","signal":"traces","at_s":120.000302029},{"id":"H4","signal":"traces","at_s":120.000302029},{"id":"S1","signal":"metrics","at_s":120.000302029},{"id":"H4","signal":"metrics","at_s":120.000302029},{"id":"S1","signal":"logs","at_s":120.000302029},{"id":"H4","signal":"logs","at_s":120.000302029}],"hard":true},"valid":true}}
+2026/10/26 17:57:30 tm-f1-A-t030-healthy-r1: done, valid=true, first limit &{ID:S1 Signal:traces AtS:120.000302029}
+[sofka] container exited; stream ended
+---
+{
+  "timestamp": "2026-10-26 19:15:20.778",
+  "timeEpochMs": 1793038520778,
+  "timeEpochNs": "1793038520778264760",
+  "timeLocal": "2026-10-26 19:15:20",
+  "timeUtc": "2026-10-26 18:15:20",
+  "timeFromNow": "12 minutes ago",
+  "logLevel": "unknown",
+  "displayLevel": "unk",
+  "line": "loadtest result",
+  "labels": {
+    "_stream": "{kubernetes.container_name=\"loadtest\",kubernetes.pod_name=\"loadtest-sfrbv\",kubernetes.pod_namespace=\"otel-load-test\",kubernetes.pod_node_name=\"shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w\"}",
+    "_stream_id": "00000000000000003bff09ae1830cfe14de778cf4f31b24e",
+    "cluster": "berlin-gcp-europe-west-1",
+    "kubernetes.container_id": "containerd://1a0bd46bab34d9e4c7f53aa79c067458fbd7522a48e62966ff796bfad95fa708",
+    "kubernetes.container_name": "loadtest",
+    "kubernetes.pod_ip": "100.64.0.113",
+    "kubernetes.pod_labels.batch.kubernetes.io/controller-uid": "7a8f4313-a7ba-43b2-97e7-1ecc850f6302",
+    "kubernetes.pod_labels.batch.kubernetes.io/job-name": "loadtest",
+    "kubernetes.pod_labels.controller-uid": "7a8f4313-a7ba-43b2-97e7-1ecc850f6302",
+    "kubernetes.pod_labels.job-name": "loadtest",
+    "kubernetes.pod_labels.topology.kubernetes.io/region": "europe-west1",
+    "kubernetes.pod_labels.topology.kubernetes.io/zone": "europe-west1-d",
+    "kubernetes.pod_name": "loadtest-sfrbv",
+    "kubernetes.pod_namespace": "otel-load-test",
+    "kubernetes.pod_node_name": "shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w",
+    "result.collector.cpu_avg": "2.783332643333333",
+    "result.collector.cpu_p95": "3.1869536741666673",
+    "result.collector.evicted": "false",
+    "result.collector.oom_killed": "false",
+    "result.collector.restarts": "0",
+    "result.collector.rss_max_mib": "280.66796875",
+    "result.collector.working_set_max_mib": "229.44921875",
+    "result.config.bytes": "0",
+    "result.config.config_maps": "0",
+    "result.config.exporters": "0",
+    "result.config.processor_instances": "0",
+    "result.config.service_pipelines": "0",
+    "result.config.startup_s": "0",
+    "result.env.collector_node.cpu": "3.92",
+    "result.env.collector_node.machine_type": "n1-standard-4",
+    "result.env.collector_node.memory_gib": "13.53738784790039",
+    "result.env.collector_node.name": "shoot--berlin--tom-evaluation-worker-otelcol-z1-d5556-ft4vb",
+    "result.env.load_nodes": [
+      {
+        "name": "shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w",
+        "machine_type": "n4-highcpu-8",
+        "cpu": 7.92,
+        "memory_gib": 14.519500732421875
+      }
+    ],
+    "result.limit.all": [
+      {
+        "id": "S1",
+        "signal": "traces",
+        "at_s": 119.999814503
+      },
+      {
+        "id": "H4",
+        "signal": "traces",
+        "at_s": 119.999814503
+      },
+      {
+        "id": "S1",
+        "signal": "metrics",
+        "at_s": 119.999814503
+      },
+      {
+        "id": "H4",
+        "signal": "metrics",
+        "at_s": 119.999814503
+      },
+      {
+        "id": "S1",
+        "signal": "logs",
+        "at_s": 119.999814503
+      },
+      {
+        "id": "H4",
+        "signal": "logs",
+        "at_s": 119.999814503
+      }
+    ],
+    "result.limit.first.at_s": "119.999814503",
+    "result.limit.first.id": "S1",
+    "result.limit.first.signal": "traces",
+    "result.limit.hard": "true",
+    "result.run.args": [
+      "-target=tm",
+      "-shape=F1",
+      "-tenants=50",
+      "-load=A",
+      "-warmup=2m",
+      "-steady=10m",
+      "-cooldown=2m",
+      "-skip-preflight"
+    ],
+    "result.run.date": "2026-10-26T18:01:20.399476183Z",
+    "result.run.end": "2026-10-26T18:15:20.549276491Z",
+    "result.run.id": "tm-f1-A-t050-healthy-r1",
+    "result.run.start": "2026-10-26T18:01:20.399185497Z",
+    "result.run.steady_end": "2026-10-26T18:13:20.399185497Z",
+    "result.run.steady_start": "2026-10-26T18:03:20.399185497Z",
+    "result.run.tool_commit": "d46909f0edf2704355f6888cb0d2b9da4ea4696b",
+    "result.setup.generator.image": "ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0",
+    "result.setup.generator.log_body_bytes": "2000",
+    "result.setup.generator.workers_per_tenant.logs": "1",
+    "result.setup.generator.workers_per_tenant.metrics": "1",
+    "result.setup.generator.workers_per_tenant.traces": "1",
+    "result.setup.health": "healthy",
+    "result.setup.load": "A",
+    "result.setup.mem_limit_mib": "4096",
+    "result.setup.offered_per_s.logs": "6000",
+    "result.setup.offered_per_s.metrics": "9000",
+    "result.setup.offered_per_s.traces": "10000",
+    "result.setup.phases_s.cooldown": "120",
+    "result.setup.phases_s.steady": "600",
+    "result.setup.phases_s.warmup": "120",
+    "result.setup.queue_size_per_exporter": "5",
+    "result.setup.rate_per_tenant.logs": "120",
+    "result.setup.rate_per_tenant.metrics": "180",
+    "result.setup.rate_per_tenant.traces": "200",
+    "result.setup.shape": "F1",
+    "result.setup.target": "tm",
+    "result.setup.tenants": "50",
+    "result.signals.logs.enqueue_failed": "0",
+    "result.signals.logs.exported_healthy_per_s": "75.16666666666667",
+    "result.signals.logs.exported_per_s": "75.16666666666667",
+    "result.signals.logs.per_pipeline_min_max": [
+      0,
+      0
+    ],
+    "result.signals.logs.queue_util_max": "0.2",
+    "result.signals.logs.received_per_s": "73.5",
+    "result.signals.logs.refused": "600400",
+    "result.signals.logs.send_failed": "0",
+    "result.signals.metrics.enqueue_failed": "0",
+    "result.signals.metrics.exported_healthy_per_s": "119.16666666666666",
+    "result.signals.metrics.exported_per_s": "119.16666666666666",
+    "result.signals.metrics.per_pipeline_min_max": [
+      0,
+      0
+    ],
+    "result.signals.metrics.queue_util_max": "0.2",
+    "result.signals.metrics.received_per_s": "137.63333333333333",
+    "result.signals.metrics.refused": "609400",
+    "result.signals.metrics.send_failed": "0",
+    "result.signals.traces.enqueue_failed": "0",
+    "result.signals.traces.exported_healthy_per_s": "733.7876755326755",
+    "result.signals.traces.exported_per_s": "733.7876755326755",
+    "result.signals.traces.per_pipeline_min_max": [
+      0,
+      0
+    ],
+    "result.signals.traces.queue_util_max": "0.2",
+    "result.signals.traces.received_per_s": "717.99",
+    "result.signals.traces.refused": "367404",
+    "result.signals.traces.send_failed": "0",
+    "result.valid": "true"
+  },
+  "fields": {
+    "detected_level": "unknown"
+  }
+}
+---
+2026/10/26 18:26:39 tm-f1-A-t100-healthy-r1: preflight capacity and disk checks skipped (-skip-preflight)
+2026/10/26 18:27:20 tm-f1-A-t100-healthy-r1: load on, measuring 18:29:20 – 18:39:20
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t100-healthy-r1","args":["-target=tm","-shape=F1","-tenants=100","-load=A","-warmup=2m","-steady=10m","-cooldown=2m","-skip-preflight"],"tool_commit":"d46909f0edf2704355f6888cb0d2b9da4ea4696b","date":"2026-10-26T18:27:20.724076006Z","collector_image":"","start":"2026-10-26T18:27:20.72378512Z","steady_start":"2026-10-26T18:29:20.72378512Z","steady_end":"2026-10-26T18:39:20.72378512Z","end":"2026-10-26T18:41:20.865057316Z"},"setup":{"target":"tm","shape":"F1","load":"A","tenants":100,"health":"healthy","rate_per_tenant":{"logs":60,"metrics":90,"traces":100},"offered_per_s":{"logs":6000,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":2,"phases_s":{"warmup":120,"steady":600,"cooldown":120},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":1,"metrics":1,"traces":1},"log_body_bytes":2000}},"env":{"collector_node":{"name":"shoot--berlin--tom-evaluation-worker-otelcol-z1-d5556-ft4vb","machine_type":"n1-standard-4","cpu":3.92,"memory_gib":13.53738784790039},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w","machine_type":"n4-highcpu-8","cpu":7.92,"memory_gib":14.519500732421875}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"signals":{"logs":{"received_per_s":152.66666666666666,"exported_per_s":169.00000000000003,"exported_healthy_per_s":169.00000000000003,"per_pipeline_min_max":[0,0],"refused":1087400,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.5},"metrics":{"received_per_s":256.46666666666664,"exported_per_s":218.33333333333331,"exported_healthy_per_s":218.33333333333331,"per_pipeline_min_max":[0,0],"refused":1142100,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.5},"traces":{"received_per_s":512.9166666666666,"exported_per_s":579.0266666666665,"exported_healthy_per_s":579.0266666666665,"per_pipeline_min_max":[0,0],"refused":760180,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.5}},"collector":{"rss_max_mib":482.953125,"working_set_max_mib":400.6640625,"cpu_avg":4.702018303333333,"cpu_p95":5.692179148333332,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":{"id":"S1","signal":"traces","at_s":120.00021488},"all":[{"id":"S1","signal":"traces","at_s":120.00021488},{"id":"H4","signal":"traces","at_s":120.00021488},{"id":"S1","signal":"metrics","at_s":120.00021488},{"id":"H4","signal":"metrics","at_s":120.00021488},{"id":"S1","signal":"logs","at_s":120.00021488},{"id":"H4","signal":"logs","at_s":120.00021488},{"id":"S4","at_s":720}],"hard":true},"valid":true}}
+2026/10/26 18:41:31 tm-f1-A-t100-healthy-r1: done, valid=true, first limit &{ID:S1 Signal:traces AtS:120.00021488}
+[sofka] container exited; stream ended
+
+---
+2026/10/26 18:42:58 tm-f1-A-t001-healthy-r1: preflight capacity and disk checks skipped (-skip-preflight)
+2026/10/26 18:43:03 tm-f1-A-t001-healthy-r1: load on, measuring 18:45:03 – 18:55:03
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t001-healthy-r1","args":["-target=tm","-shape=F1","-tenants=1","-load=A","-warmup=2m","-steady=10m","-cooldown=2m","-skip-preflight"],"tool_commit":"d46909f0edf2704355f6888cb0d2b9da4ea4696b","date":"2026-10-26T18:43:03.582786027Z","collector_image":"","start":"2026-10-26T18:43:03.582537308Z","steady_start":"2026-10-26T18:45:03.582537308Z","steady_end":"2026-10-26T18:55:03.582537308Z","end":"2026-10-26T18:57:03.764776876Z"},"setup":{"target":"tm","shape":"F1","load":"A","tenants":1,"health":"healthy","rate_per_tenant":{"logs":6000,"metrics":9000,"traces":10000},"offered_per_s":{"logs":6000,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":256,"phases_s":{"warmup":120,"steady":600,"cooldown":120},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":12,"metrics":18,"traces":20},"log_body_bytes":2000}},"env":{"collector_node":{"name":"shoot--berlin--tom-evaluation-worker-otelcol-z1-d5556-ft4vb","machine_type":"n1-standard-4","cpu":3.92,"memory_gib":13.53738784790039},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w","machine_type":"n4-highcpu-8","cpu":7.92,"memory_gib":14.519500732421875}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"signals":{"logs":{"received_per_s":5994,"exported_per_s":5993.8133333333335,"exported_healthy_per_s":5993.8133333333335,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.00390625},"metrics":{"received_per_s":8992,"exported_per_s":8991.573333333334,"exported_healthy_per_s":8991.573333333334,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.00390625},"traces":{"received_per_s":9991.5,"exported_per_s":9991.68,"exported_healthy_per_s":9991.68,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.00390625}},"collector":{"rss_max_mib":167.3671875,"working_set_max_mib":124.125,"cpu_avg":0.3026590316666667,"cpu_p95":0.3652733866666667,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":null,"all":[],"hard":false},"valid":true}}
+2026/10/26 18:57:09 tm-f1-A-t001-healthy-r1: done, valid=true, first limit <nil>
+[sofka] container exited; stream ended
+---
+{
+  "timestamp": "2026-10-26 20:10:49.460",
+  "timeEpochMs": 1793041849460,
+  "timeEpochNs": "1793041849460426183",
+  "timeLocal": "2026-10-26 20:10:49",
+  "timeUtc": "2026-10-26 19:10:49",
+  "timeFromNow": "12 hours ago",
+  "logLevel": "unknown",
+  "displayLevel": "unk",
+  "line": "loadtest result",
+  "labels": {
+    "_stream": "{kubernetes.container_name=\"loadtest\",kubernetes.pod_name=\"loadtest-g7v8c\",kubernetes.pod_namespace=\"otel-load-test\",kubernetes.pod_node_name=\"shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w\"}",
+    "_stream_id": "00000000000000009032862c20a450bf78b71a4e67e7ac13",
+    "cluster": "berlin-gcp-europe-west-1",
+    "kubernetes.container_id": "containerd://2ca2406410b8346a6f5ad2dd95e9107a077d05bd95ed8fed9c438ff05d6d1cf3",
+    "kubernetes.container_name": "loadtest",
+    "kubernetes.pod_ip": "100.64.0.253",
+    "kubernetes.pod_labels.batch.kubernetes.io/controller-uid": "8ac1547d-677f-4b90-a0e4-993397f0b4b2",
+    "kubernetes.pod_labels.batch.kubernetes.io/job-name": "loadtest",
+    "kubernetes.pod_labels.controller-uid": "8ac1547d-677f-4b90-a0e4-993397f0b4b2",
+    "kubernetes.pod_labels.job-name": "loadtest",
+    "kubernetes.pod_labels.topology.kubernetes.io/region": "europe-west1",
+    "kubernetes.pod_labels.topology.kubernetes.io/zone": "europe-west1-d",
+    "kubernetes.pod_name": "loadtest-g7v8c",
+    "kubernetes.pod_namespace": "otel-load-test",
+    "kubernetes.pod_node_name": "shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w",
+    "result.collector.cpu_avg": "0.3794162583333333",
+    "result.collector.cpu_p95": "0.4621388091666665",
+    "result.collector.evicted": "false",
+    "result.collector.oom_killed": "false",
+    "result.collector.restarts": "0",
+    "result.collector.rss_max_mib": "186.3515625",
+    "result.collector.working_set_max_mib": "133.1796875",
+    "result.config.bytes": "0",
+    "result.config.config_maps": "0",
+    "result.config.exporters": "0",
+    "result.config.processor_instances": "0",
+    "result.config.service_pipelines": "0",
+    "result.config.startup_s": "0",
+    "result.env.collector_node.cpu": "3.92",
+    "result.env.collector_node.machine_type": "n1-standard-4",
+    "result.env.collector_node.memory_gib": "13.53738784790039",
+    "result.env.collector_node.name": "shoot--berlin--tom-evaluation-worker-otelcol-z1-d5556-ft4vb",
+    "result.env.load_nodes": [
+      {
+        "name": "shoot--berlin--tom-evaluation-worker-load-z1-5d686-lq64w",
+        "machine_type": "n4-highcpu-8",
+        "cpu": 7.92,
+        "memory_gib": 14.519500732421875
+      }
+    ],
+    "result.limit.all": [],
+    "result.limit.hard": "false",
+    "result.run.args": [
+      "-target=tm",
+      "-shape=F1",
+      "-tenants=3",
+      "-load=A",
+      "-warmup=2m",
+      "-steady=10m",
+      "-cooldown=1m",
+      "-skip-preflight"
+    ],
+    "result.run.date": "2026-10-26T18:57:49.22497728Z",
+    "result.run.end": "2026-10-26T19:10:49.349081171Z",
+    "result.run.id": "tm-f1-A-t003-healthy-r1",
+    "result.run.start": "2026-10-26T18:57:49.224701771Z",
+    "result.run.steady_end": "2026-10-26T19:09:49.224701771Z",
+    "result.run.steady_start": "2026-10-26T18:59:49.224701771Z",
+    "result.run.tool_commit": "d46909f0edf2704355f6888cb0d2b9da4ea4696b",
+    "result.setup.generator.image": "ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0",
+    "result.setup.generator.log_body_bytes": "2000",
+    "result.setup.generator.workers_per_tenant.logs": "4",
+    "result.setup.generator.workers_per_tenant.metrics": "6",
+    "result.setup.generator.workers_per_tenant.traces": "7",
+    "result.setup.health": "healthy",
+    "result.setup.load": "A",
+    "result.setup.mem_limit_mib": "4096",
+    "result.setup.offered_per_s.logs": "6000",
+    "result.setup.offered_per_s.metrics": "9000",
+    "result.setup.offered_per_s.traces": "9999",
+    "result.setup.phases_s.cooldown": "60",
+    "result.setup.phases_s.steady": "600",
+    "result.setup.phases_s.warmup": "120",
+    "result.setup.queue_size_per_exporter": "85",
+    "result.setup.rate_per_tenant.logs": "2000",
+    "result.setup.rate_per_tenant.metrics": "3000",
+    "result.setup.rate_per_tenant.traces": "3333",
+    "result.setup.shape": "F1",
+    "result.setup.target": "tm",
+    "result.setup.tenants": "3",
+    "result.signals.logs.enqueue_failed": "0",
+    "result.signals.logs.exported_healthy_per_s": "5992.96",
+    "result.signals.logs.exported_per_s": "5992.96",
+    "result.signals.logs.per_pipeline_min_max": [
+      0,
+      0
+    ],
+    "result.signals.logs.queue_util_max": "0.011764705882352941",
+    "result.signals.logs.received_per_s": "5993",
+    "result.signals.logs.refused": "0",
+    "result.signals.logs.send_failed": "0",
+    "result.signals.metrics.enqueue_failed": "0",
+    "result.signals.metrics.exported_healthy_per_s": "8994.133333333333",
+    "result.signals.metrics.exported_per_s": "8994.133333333333",
+    "result.signals.metrics.per_pipeline_min_max": [
+      0,
+      0
+    ],
+    "result.signals.metrics.queue_util_max": "0.011764705882352941",
+    "result.signals.metrics.received_per_s": "8995.4",
+    "result.signals.metrics.refused": "0",
+    "result.signals.metrics.send_failed": "0",
+    "result.signals.traces.enqueue_failed": "0",
+    "result.signals.traces.exported_healthy_per_s": "9994.24",
+    "result.signals.traces.exported_per_s": "9994.24",
+    "result.signals.traces.per_pipeline_min_max": [
+      0,
+      0
+    ],
+    "result.signals.traces.queue_util_max": "0.011764705882352941",
+    "result.signals.traces.received_per_s": "9994.166666666666",
+    "result.signals.traces.refused": "0",
+    "result.signals.traces.send_failed": "0",
+    "result.valid": "true"
+  },
+  "fields": {
+    "detected_level": "unknown"
+  }
+}
+---
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t005-healthy-r1","args":["-target=tm","-shape=F1","-tenants=5","-load=A","-warmup=2m","-steady=10m","-cooldown=1m","-skip-preflight"],"tool_commit":"d46909f0edf2704355f6888cb0d2b9da4ea4696b","date":"2026-10-27T07:32:16.141380191Z","collector_image":"","start":"2026-10-27T07:32:16.141084658Z","steady_start":"2026-10-27T07:34:16.141084658Z","steady_end":"2026-10-27T07:44:16.141084658Z","end":"2026-10-27T07:45:16.252891177Z"},"setup":{"target":"tm","shape":"F1","load":"A","tenants":5,"health":"healthy","rate_per_tenant":{"logs":1200,"metrics":1800,"traces":2000},"offered_per_s":{"logs":6000,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":51,"phases_s":{"warmup":120,"steady":600,"cooldown":60},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":3,"metrics":4,"traces":4},"log_body_bytes":2000}},"env":{"collector_node":{"name":"shoot--berlin--tom-evaluation-worker-otelcol-z1-d5556-gpznk","machine_type":"n1-standard-4","cpu":3.92,"memory_gib":13.537384033203125},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-5d686-d2rpq","machine_type":"n4-highcpu-8","cpu":7.92,"memory_gib":14.519500732421875}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"signals":{"logs":{"received_per_s":5996,"exported_per_s":5994.666666666667,"exported_healthy_per_s":5994.666666666667,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.0196078431372549},"metrics":{"received_per_s":8996.800000000001,"exported_per_s":8994.986666666666,"exported_healthy_per_s":8994.986666666666,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.0196078431372549},"traces":{"received_per_s":9994.166666666666,"exported_per_s":9992.533333333333,"exported_healthy_per_s":9992.533333333333,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.0196078431372549}},"collector":{"rss_max_mib":211.16015625,"working_set_max_mib":175.515625,"cpu_avg":0.44710394049019603,"cpu_p95":0.5116690333333334,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":null,"all":[],"hard":false},"valid":true}}
+---
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t100-healthy-r1","args":["-target=tm","-shape=F1","-tenants=100","-load=A","-warmup=15m","-steady=10m","-cooldown=1m","-skip-preflight","-node-selector=kubernetes.io/hostname=shoot--berlin--tom-evaluation-worker-load-z1-69cff-pcfsz"],"tool_commit":"69d08dd3b82bb01a5515974bc6d064bdc7404a39","date":"2026-10-28T09:33:03.433262709Z","collector_image":"","start":"2026-10-28T09:33:03.432993968Z","steady_start":"2026-10-28T09:48:03.432993968Z","steady_end":"2026-10-28T09:58:03.432993968Z","end":"2026-10-28T09:59:03.543675309Z"},"setup":{"target":"tm","shape":"F1","load":"A","tenants":100,"health":"healthy","rate_per_tenant":{"logs":60,"metrics":90,"traces":100},"offered_per_s":{"logs":6000,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":2,"phases_s":{"warmup":900,"steady":600,"cooldown":60},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":1,"metrics":1,"traces":1},"log_body_bytes":2000}},"env":{"collector_node":{"name":"","machine_type":"","cpu":0,"memory_gib":0},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-69cff-pcfsz","machine_type":"n4-highcpu-16","cpu":15.92,"memory_gib":30.243453979492188}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"signals":{"logs":{"received_per_s":5992.5,"exported_per_s":6004.366666666667,"exported_healthy_per_s":6004.366666666667,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.211},"metrics":{"received_per_s":9025.233333333334,"exported_per_s":8959.999999999996,"exported_healthy_per_s":8959.999999999996,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":24576,"queue_util_max":0.211},"traces":{"received_per_s":10002.706666666667,"exported_per_s":9984,"exported_healthy_per_s":9984,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.211}},"collector":{"rss_max_mib":1392.453125,"working_set_max_mib":1812.1796875,"cpu_avg":3.722581658333334,"cpu_p95":4.084801840833334,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":{"id":"H3","signal":"metrics","at_s":900.000006032},"all":[{"id":"H3","signal":"metrics","at_s":900.000006032}],"hard":true},"valid":true}}
+---
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t020-healthy-r1","args":["-target=tm","-shape=F1","-tenants=20","-load=A","-warmup=3m","-steady=10m","-cooldown=1m","-skip-preflight","-node-selector=kubernetes.io/hostname=shoot--berlin--tom-evaluation-worker-load-z1-69cff-pcfsz"],"tool_commit":"7678af0ffb099bce5724acc7b6c950bc411188ca","date":"2026-10-29T07:41:41.498845921Z","collector_image":"","start":"2026-10-29T07:41:41.498559511Z","steady_start":"2026-10-29T07:44:41.498559511Z","steady_end":"2026-10-29T07:54:41.498559511Z","end":"2026-10-29T07:55:41.628584235Z"},"setup":{"target":"tm","component":"gateway","shape":"F1","load":"A","tenants":20,"health":"healthy","rate_per_tenant":{"logs":300,"metrics":450,"traces":500},"offered_per_s":{"logs":6000,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":12,"phases_s":{"warmup":180,"steady":600,"cooldown":60},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":1,"metrics":1,"traces":1},"log_body_bytes":2000}},"env":{"collector_node":{"name":"","machine_type":"","cpu":0,"memory_gib":0},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-69cff-pcfsz","machine_type":"n4-highcpu-16","cpu":15.92,"memory_gib":30.243453979492188}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"configs":{"gateway":{"bytes":71177,"config_maps":1,"service_pipelines":55,"processor_instances":433,"exporters":52}},"signals":{"logs":{"received_per_s":5990.5,"exported_per_s":5991.253333333333,"exported_healthy_per_s":5991.253333333333,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.001},"metrics":{"received_per_s":8993.733333333334,"exported_per_s":8989.013333333334,"exported_healthy_per_s":8989.013333333334,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.001},"traces":{"received_per_s":9996.666666666666,"exported_per_s":9999.36,"exported_healthy_per_s":9999.36,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.001}},"collector":{"rss_max_mib":375.50390625,"working_set_max_mib":377.1171875,"cpu_avg":0.8876802316666669,"cpu_p95":0.9943473758333334,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":null,"all":[],"hard":false},"valid":true}}
+---
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t050-healthy-r1","args":["-target=tm","-shape=F1","-tenants=50","-load=A","-warmup=3m","-steady=10m","-cooldown=1m","-skip-preflight","-node-selector=kubernetes.io/hostname=shoot--berlin--tom-evaluation-worker-load-z1-69cff-pcfsz"],"tool_commit":"7678af0ffb099bce5724acc7b6c950bc411188ca","date":"2026-10-29T07:58:12.842987079Z","collector_image":"","start":"2026-10-29T07:58:12.842679271Z","steady_start":"2026-10-29T08:01:12.842679271Z","steady_end":"2026-10-29T08:11:12.842679271Z","end":"2026-10-29T08:12:13.007552227Z"},"setup":{"target":"tm","component":"gateway","shape":"F1","load":"A","tenants":50,"health":"healthy","rate_per_tenant":{"logs":120,"metrics":180,"traces":200},"offered_per_s":{"logs":6000,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":5,"phases_s":{"warmup":180,"steady":600,"cooldown":60},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":1,"metrics":1,"traces":1},"log_body_bytes":2000}},"env":{"collector_node":{"name":"","machine_type":"","cpu":0,"memory_gib":0},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-69cff-pcfsz","machine_type":"n4-highcpu-16","cpu":15.92,"memory_gib":30.243453979492188}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"configs":{"gateway":{"bytes":157312,"config_maps":1,"service_pipelines":130,"processor_instances":1052,"exporters":127}},"signals":{"logs":{"received_per_s":6000,"exported_per_s":5973.333333333334,"exported_healthy_per_s":5973.333333333334,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0},"metrics":{"received_per_s":9012.233333333334,"exported_per_s":8988.16,"exported_healthy_per_s":8988.16,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0},"traces":{"received_per_s":10000,"exported_per_s":9983.999999999998,"exported_healthy_per_s":9983.999999999998,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0}},"collector":{"rss_max_mib":703.2734375,"working_set_max_mib":675.6640625,"cpu_avg":1.8757670283333334,"cpu_p95":2.131841505833333,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":null,"all":[],"hard":false},"valid":true}}
+---
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t100-healthy-r1","args":["-target=tm","-shape=F1","-tenants=100","-load=A","-warmup=3m","-steady=10m","-cooldown=1m","-skip-preflight","-node-selector=kubernetes.io/hostname=shoot--berlin--tom-evaluation-worker-load-z1-6747c-jh8ll"],"tool_commit":"7678af0ffb099bce5724acc7b6c950bc411188ca","date":"2026-10-29T08:33:21.685467099Z","collector_image":"","start":"2026-10-29T08:33:21.685215214Z","steady_start":"2026-10-29T08:36:21.685215214Z","steady_end":"2026-10-29T08:46:21.685215214Z","end":"2026-10-29T08:47:21.871440182Z"},"setup":{"target":"tm","component":"gateway","shape":"F1","load":"A","tenants":100,"health":"healthy","rate_per_tenant":{"logs":60,"metrics":90,"traces":100},"offered_per_s":{"logs":6000,"metrics":9000,"traces":10000},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":2,"phases_s":{"warmup":180,"steady":600,"cooldown":60},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":1,"metrics":1,"traces":1},"log_body_bytes":2000}},"env":{"collector_node":{"name":"","machine_type":"","cpu":0,"memory_gib":0},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-6747c-jh8ll","machine_type":"n4-highcpu-16","cpu":15.92,"memory_gib":30.243438720703125}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"configs":{"gateway":{"bytes":341174,"config_maps":1,"service_pipelines":291,"processor_instances":2365,"exporters":288}},"signals":{"logs":{"received_per_s":5991.333333333333,"exported_per_s":6049.1466666666665,"exported_healthy_per_s":6049.1466666666665,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.001},"metrics":{"received_per_s":9021.900000000001,"exported_per_s":8960.853333333329,"exported_healthy_per_s":8960.853333333329,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.001},"traces":{"received_per_s":10001.793333333333,"exported_per_s":10053.973333333333,"exported_healthy_per_s":10053.973333333333,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.001}},"collector":{"rss_max_mib":795.28125,"working_set_max_mib":721.0703125,"cpu_avg":4.407563446666666,"cpu_p95":5.103175461666668,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":null,"all":[],"hard":false},"valid":true}}
+---
+{"msg":"loadtest result","result":{"run":{"id":"tm-f1-A-t030-healthy-r1","args":["-target=tm","-shape=F1","-tenants=30","-load=A","-warmup=3m","-steady=10m","-cooldown=1m","-skip-preflight","-node-selector=kubernetes.io/hostname=shoot--berlin--tom-evaluation-worker-load-z1-6747c-jh8ll"],"tool_commit":"7678af0ffb099bce5724acc7b6c950bc411188ca","date":"2026-10-29T09:07:05.578944774Z","collector_image":"","start":"2026-10-29T09:07:05.578679982Z","steady_start":"2026-10-29T09:10:05.578679982Z","steady_end":"2026-10-29T09:20:05.578679982Z","end":"2026-10-29T09:21:05.735260465Z"},"setup":{"target":"tm","component":"gateway","shape":"F1","load":"A","tenants":30,"health":"healthy","rate_per_tenant":{"logs":200,"metrics":300,"traces":333},"offered_per_s":{"logs":6000,"metrics":9000,"traces":9990},"cpu_limit":null,"mem_limit_mib":4096,"queue_size_per_exporter":8,"phases_s":{"warmup":180,"steady":600,"cooldown":60},"generator":{"image":"ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/telemetrygen:v0.163.0","workers_per_tenant":{"logs":1,"metrics":1,"traces":1},"log_body_bytes":2000}},"env":{"collector_node":{"name":"","machine_type":"","cpu":0,"memory_gib":0},"load_nodes":[{"name":"shoot--berlin--tom-evaluation-worker-load-z1-6747c-jh8ll","machine_type":"n4-highcpu-16","cpu":15.92,"memory_gib":30.243438720703125}]},"config":{"bytes":0,"config_maps":0,"service_pipelines":0,"processor_instances":0,"exporters":0,"startup_s":0},"configs":{"gateway":{"bytes":102461,"config_maps":1,"service_pipelines":82,"processor_instances":664,"exporters":79}},"signals":{"logs":{"received_per_s":5997.333333333333,"exported_per_s":5990.4,"exported_healthy_per_s":5990.4,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.001},"metrics":{"received_per_s":9007.9,"exported_per_s":9006.080000000002,"exported_healthy_per_s":9006.080000000002,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.001},"traces":{"received_per_s":9989.666666666666,"exported_per_s":9984.853333333333,"exported_healthy_per_s":9984.853333333333,"per_pipeline_min_max":[0,0],"refused":0,"enqueue_failed":0,"send_failed":0,"queue_util_max":0.001}},"collector":{"rss_max_mib":465.91796875,"working_set_max_mib":503.890625,"cpu_avg":1.1312897083333335,"cpu_p95":1.2349967075000001,"restarts":0,"restart_at_s":null,"oom_killed":false,"oom_at_s":null,"evicted":false,"queue_drain_s":null},"limit":{"first":null,"all":[],"hard":false},"valid":true}}
