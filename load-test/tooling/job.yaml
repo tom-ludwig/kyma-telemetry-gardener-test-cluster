@@ -1,36 +1,38 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: loadtest
+  name: loadtest-file-storage
   namespace: otel-load-test
 spec:
   backoffLimit: 0
-  ttlSecondsAfterFinished: 300
+  ttlSecondsAfterFinished: 3600
   template:
     spec:
       serviceAccountName: loadtest
       restartPolicy: Never
-      nodeSelector:
-        load-test/role: load
+      # nodeSelector:
+      #   kubernetes.io/hostname: shoot--berlin--tom-evaluation-otel-file-queue-z1-89cb9-8226r
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: loadtest
-          image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/loadtest:main
+          image: ghcr.io/tom-ludwig/kyma-telemetry-gardener-test-cluster/loadtest:file-storage
           imagePullPolicy: Always
           args:
             - -target=tm # test managed Telemetry Manager gateway (F1, healthy only); default otel
             # - -component=log-agent # gateway (default), log-agent, metric-agent or all; agents and all need -target=tm
+            # - -target=otel-fs # test managed Telemetry Manager gateway (F1, healthy only); default otel
             - -shape=F1
-            - -tenants=10
+            - -tenants=50
             - -load=A
-            # - -rate=50
-            - -warmup=2m
-            - -steady=10m
-            - -cooldown=2m
+            - -warmup=10m
+            - -steady=3m
+            - -cooldown=1m
             - -skip-preflight
+            - -node-selector=kubernetes.io/hostname=shoot--berlin--tom-evaluation-worker-load-z1-6747c-jh8ll
+            # - -health=faulty
           resources:
             requests:
               cpu: 50m

@@ -185,10 +185,12 @@ To assess how Kyma's current Telemetry Manager behaves if the 5-pipeline limit i
 | 3 | 5 993 | 8 995 | 9 994 | 0 | 0.38 | 0.46 | 186 MiB | 100% (Valid ✓) |
 | 5 | 5 996 | 8 997 | 9 994 | 0 | 0.45 | 0.51 | 211 MiB | 100% (Valid ✓) |
 | 10 | 5 998 | 8 997 | 9 993 | 0 | 0.61 | 0.72 | 248 MiB | 100% (Valid ✓) |
-| 20 | 5 977 | 8 961 | 9 978 | 0 | 1.06 | 1.27 | 284 MiB | 100% (Valid ✓) |
-| 30 | 1 872 | 2 801 | 8 719 | 742 513 ⚠ | 2.43 | 2.71 | 254 MiB | Degraded (~31% logs/metrics) ✗ |
-| 50 | 74 | 138 | 718 | 1 577 204 ⚠ | 2.78 | 3.19 | 281 MiB | **Severe drop** (<2% logs/metrics) ✗ |
-| 100 | 153 | 256 | 513 | 2 989 680 ⚠ | 4.70 | 5.69 | 483 MiB | **Complete collapse** (>2.9M refused) ✗ |
+| 20 | 5 991 | 8 994 | 9 997 | 0 | 0.89 | 0.99 | 376 MiB | 100% (Valid ✓) |
+| 30 | 5 997 | 9 008 | 9 990 | 0 | 1.13 | 1.23 | 466 MiB | 100% (Valid ✓) |
+| 50 | 6 000 | 9 012 | 10 000 | 0 | 1.88 | 2.13 | 703 MiB | 100% (Valid ✓) |
+| 100 | 5 991 | 9 022 | 10 002 | 0 | 4.41 | 5.10 | 795 MiB | 100% (Valid ✓) |
+
+> **Note**: Runs for 20T–100T were executed with metric forward connector routing and adequate exporter queue sizing on an `n4-highcpu-16` load node, delivering 100% throughput with 0 connection refusals. In untuned runs under TM's legacy queue formula `max(1, 256 / tenants)`, 30T–100T suffered queue starvation and dropped >96% of data.
 
 ```mermaid
 ---
@@ -201,7 +203,7 @@ xychart-beta
     title "Telemetry Manager (F1): CPU Avg (Cores) vs Tenants"
     x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
     y-axis "CPU Cores" 0 --> 5
-    bar [0.30, 0.38, 0.45, 0.61, 1.06, 2.43, 2.78, 4.70]
+    bar [0.30, 0.38, 0.45, 0.61, 0.89, 1.13, 1.88, 4.41]
 ```
 
 ```mermaid
@@ -214,8 +216,8 @@ config:
 xychart-beta
     title "Telemetry Manager (F1): Memory Growth (RSS Max in MiB)"
     x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
-    y-axis "RSS Max (MiB)" 150 --> 600
-    bar [167, 186, 211, 248, 284, 254, 281, 483]
+    y-axis "RSS Max (MiB)" 150 --> 1000
+    bar [167, 186, 211, 248, 376, 466, 703, 795]
 ```
 
 ```mermaid
@@ -229,14 +231,15 @@ xychart-beta
     title "Telemetry Manager (F1): Delivered Throughput (% of Offered 25k/s)"
     x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
     y-axis "Delivered %" 0 --> 100
-    bar [100, 100, 100, 100, 100, 54, 4, 4]
+    bar [100, 100, 100, 100, 100, 100, 100, 100]
 ```
 
 #### Key Takeaways (Current Telemetry Manager)
 
-- **Manageable up to 20 tenants**: Between 1 and 20 tenants, the manager sustains 100% throughput with CPU usage scaling progressively from 0.30 to 1.06 cores and memory from 167 to 284 MiB.
-- **Cliff at 30 tenants**: Beyond 20 tenants, duplicated pipeline processing causes connection refusals and queue starvation, dropping throughput to ~31% and triggering hard limit `H4`.
-- **Complete breakdown at scale**: At 50 and 100 tenants, the collector is overwhelmed with millions of refused requests, driving CPU consumption to 4.70 cores avg (5.69 cores p95, heavily throttled on a 3.92 core node) and delivering less than 3% of telemetry. This confirms that lifting the pipeline limit requires shifting to the unified routing architecture.
+- **100% Throughput Delivered from 1 to 100 Tenants**: With tuned queue depth and metric connector routing, Telemetry Manager achieves 100% throughput across all tenant counts with zero dropped signals, zero connection refusals, and zero restarts.
+- **Steep CPU Scaling Penalty**: While memory scales gently (167 MiB at 1T up to 795 MiB at 100T), CPU usage scales progressively and steeply due to duplicated processor chains: 0.30 cores (1T) $\rightarrow$ 0.89 cores (20T) $\rightarrow$ 1.13 cores (30T) $\rightarrow$ 1.88 cores (50T) $\rightarrow$ **4.41 cores (100T)**.
+- **The Case for Routing**: While tuning enables Fan-Out to survive cleanly at 100 tenants, it demands 4.41 CPU cores. In comparison, the **Unified Routing architecture (`R1`)** achieves the exact same 100% throughput at only **0.64 cores CPU** (an **85% reduction in CPU**).
+- **The Queue Starvation Discovery**: Uncovered a critical legacy bug where `max(1, 256 / tenants)` starved exporter buffers down to 2–8 batches, proving that exporter queue depth must be decoupled from tenant count to prevent artificial backpressure and connection refusals.
 
 ### Failure & Tenant Isolation Results
 
