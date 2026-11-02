@@ -238,7 +238,7 @@ A BDC request asks for file-backed (persistent) queues for OTel logs. This was n
 | **TracePipeline, MetricPipeline** | 5 | **20** | > 100 |
 | **LogPipeline** | 5 | **10** | > 100 |
 
-- **20 trace and metric pipelines:** every scenario ran clean at 20 tenants, including the TM gateway on a 4-core node with today's queue formula (0.89 cores).
+- **20 trace and metric pipelines:** every scenario ran clean at 20 tenants, including the TM gateway on an `n4-highcpu-16` node (0.89 cores).
 - **10 LogPipelines:** the log agent costs about 70 µs CPU per log line and pipeline, on every node. 10 pipelines at 1,500 lines/s per node are about 1 core.
 - **> 100 with routing:** measured on the plain collector up to 100 tenants (0.64 cores, zero drops), the largest tier tested; how far beyond 100 it scales is still open. Routing must be re-tested inside TM before this is promised.
 - A dynamic limit can use the cost model `0.07 ms × log lines/s per node × LogPipelines` against the agent's CPU budget instead of a fixed number.
