@@ -26,11 +26,12 @@ spec:
   values:
     crds:
       enabled: true
-
+      keep: false
+    global:
+      leaderElection:
+        namespace: "cert-manager"
     webhook:
-      timeoutSeconds: 10
-      podLabels:
-        remediation.webhook.shoot.gardener.cloud/exclude: "true"
+      timeoutSeconds: 5
       validatingWebhookConfiguration:
         namespaceSelector:
           matchExpressions:
@@ -42,7 +43,7 @@ spec:
               operator: "NotIn"
               values:
                 - "kube-system"
-                # - "cert-manager"
+                - "cert-manager"
 
       mutatingWebhookConfiguration:
         namespaceSelector:
@@ -51,4 +52,4 @@ spec:
               operator: "NotIn"
               values:
                 - "kube-system"
-                # - "cert-manager"
+                - "cert-manager"
