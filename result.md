@@ -1,279 +1,262 @@
-# Lifting the Pipeline limit
+# Lifting the Pipeline Limit: Results
 
-Currently the kyma telemtry manager has a pipeline limit of 5 pipelines per signal.
-For mutli-tenant use-cases this is bad.
-So what is accually stopping the telemetry manager from removing this manual limit?
+**OTel pipeline scalability research for Telemetry Manager (TM)** · Tom Ludwig, Louis Kauer · October 2026
 
-## Limitations & Questions
+Raw data per run: [`load-test/results/`](load-test/results) · tooling: [`load-test/tooling/`](load-test/tooling) · test plan: [`docs/test-plan-phase-1.md`](docs/test-plan-phase-1.md)
 
-The pipeline limit is protection against extrem resource usage, and other kubernetes limitations. So these questions need to be ansewred:
+## Summary
 
-- With many pipelines the configmap size would grow, how do can we overcome the 1MiB config map size limit from kubernetes?
-- How performant is it to use the same otel collector instance for mutli-tenant application?
-- Do all pipelines need 100% of raw signals or could they also only receive the subset they accually need already enriched by a unified pipeline?
+| Question | Answer |
+|---|---|
+| **Q1 ConfigMap size:** do generated configs stay below 1 MiB? | **Yes.** At 100 tenants the worst OTLP-only config is 226 KiB (22 %), the TM log agent 589 KiB (57 %). The log agent would reach 1 MiB first, at about 175 tenants. |
+| **Q2 Performance:** how does one collector cope with hundreds of pipelines? | **Routing stays flat, Fan-Out does not.** Routing: 0.54 → 0.64 cores from 1 to 100 tenants, zero drops. Fan-Out (today's TM shape): 0.56 → 3.47 cores, 41 % of logs and 47 % of metrics lost at 100 tenants. |
+| **Q3 Architecture:** do all pipelines need all raw signals? | **No.** Enrich once, then route each item to its tenant pipeline. The log agent needs the same fix: today every LogPipeline reads and parses every log line on the node. |
 
-## Answers
+**Recommendation:** raise the limit now to **20 TracePipelines / MetricPipelines** and **10 LogPipelines**; target **100** after routing is in TM ([details](#10-conclusion-and-next-steps)).
 
-### [x] Configmap Size Limit
+## Contents
 
-Luckly the OpenTelmetry Collector already supports config-file splitting. This allows us to split the main config into multiple config maps, that will be asampled into a single configuration on otel-col startup.
-Telemetry Manager needs to decide how it wants to split its configuration, for example configs could be split into expoters, processors, pipelines etc. or just based on a size limit, i.e. if a config map reaches 80% of the limit => split into two sperate configmaps.
+1. [Context](#1-context)
+2. [Load test design](#2-load-test-design)
+3. [TM gateway results](#3-tm-gateway-results)
+4. [Fan-Out vs. Routing](#4-fan-out-vs-routing)
+5. [TM full stack](#5-tm-full-stack)
+6. [Log agent scalability](#6-log-agent-scalability)
+7. [ConfigMap size](#7-configmap-size)
+8. [Fault isolation](#8-fault-isolation)
+9. [Persistent queues](#9-persistent-queues)
+10. [Conclusion and next steps](#10-conclusion-and-next-steps)
 
-Reaching the config map limit of 1MiB is highly unlikely for most clusters, but if it uses a highly customised pipeline strucutre with many pipelines this limit can be reached.
+---
 
-### [x] Performance
+## 1. Context
 
-OpenTelmetry collector is increadibly performant. Though with more processors there is a performance penality. Below you can find the performance benchmarks. There is of course a huge performance/resource penality. When scaling from one pipelines(tennat) to 100 pipelines(tennants), the resource usage increased by almost 10x.
+Epic: [kyma-project/telemetry-manager#3900](https://github.com/kyma-project/telemetry-manager/issues/3900)
 
-### [x] Unified Routing Pipeline
+TM allows at most **5 pipelines per signal type** (LogPipeline, MetricPipeline, TracePipeline). The limit protects the cluster from runaway resource usage, but it blocks multi-tenant setups that need one pipeline set per tenant. The epic asks for measurements from 1 to 100 pipelines per signal (OTel components only, no Fluent Bit), a report on resource footprint, buffers, config size and Kubernetes limits, and a data-backed limit recommendation.
 
-A unified routing pipeline approch is highly recommended.
-In our example we used a routing pipeline using the routing processor.
-The routing pipeline can be used to already handle k8s_attribute enrichment, and then routing based on the namespace.
-This ensures that the other pipelines only receive the data they are interested and centerlising global processors.
+---
 
-A simple fan-out principle can also be used. But as shown in our load tests this leads to a substanial higher resource usage. Also if used in a multi-tenant scenario everyone could read each others data. The problem with a simple fan-out is dublicated processor instances, which leads to high CPU overhead, where as the memory stays rather similar to a routing approch.
+## 2. Load test design
 
-The trade-off is one extra connector hop, which ADR 013's tests showed costs basically nothing.
+### What "1 tenant" means
 
-## Benchmarks
+<p align="center"><img src="docs/assets/results/tenant-definition.png" width="75%"></p>
 
-To evaluate how the OpenTelemetry Collector handles high pipeline counts, we conducted load and resilience benchmarks. While modeled around a multi-tenant setup, allocating three pipelines per tenant (one per telemetry signal), the findings apply equally to any cluster running a large number of pipelines.
+- **OTLP only:** 1 tenant = 1 TracePipeline + 1 MetricPipeline + 1 LogPipeline = 3 collector pipelines, all in the gateway.
+- **Full stack:** the same 3 TM pipelines, but MetricPipeline also has the Prometheus input (metric agent) and LogPipeline the runtime input (log agent, container stdout) = 5 collector pipelines.
+- Every pipeline keeps only its own tenant (OTTL filter on the `tenant` attribute). TM runs include two keep-alive pipelines (`test-pipeline`), counted in all numbers.
 
-Rather than pushing for saturation limits, our primary benchmarks measure resource consumption under realistic throughput (10k spans/s, 9k metrics/s, and 6k logs/s per node). We compared a native `fan-out` architecture against an optimized `routing` approach.
+### Setup
 
-Beyond standard throughput, failure scenarios test resilience by blocking a single tenant's backend across all three of its pipelines, verifying how the collector responds and ensuring neighboring tenants remain unaffected.
+<p align="center"><img src="docs/assets/results/benchmark-setup.png" width="45%"></p>
 
-### Benchmark Setup
+A load-test Job in the cluster deploys the pipelines, starts one generator process per tenant, waits for warm-up, measures the steady state through the self-monitoring VictoriaMetrics (`vm-single`) and writes one JSON result line per run.
 
-All tests ran on a GCP Gardener shoot, isolating components into dedicated node pools to prevent interference:
+| | Value |
+|---|---|
+| Cluster | GCP Gardener shoot `berlin`, `europe-west-1`, managed by Flux |
+| Load | **25,000 signals/s in total** (6k logs, 9k metric points, 10k spans), split evenly across tenants; log body 2,000 bytes |
+| Full-stack load split | gateway: 10k spans, 2k metric points, 3k logs · metric agent: 7k points (avalanche, 30 s scrape) · log agent: 3k lines/s (stdout generator) |
+| Tenant tiers | 1, 3, 5, 10, 20, 30, 50, 100 |
+| Phases | 2 min warm-up, **10 min steady state (measured)**, 1-2 min cool-down; one run per tier |
+| Generators | telemetrygen v0.163.0 (OTLP), stdout-log-generator, avalanche v0.7.0 |
+| Plain OTel Collector | `otel/opentelemetry-collector-contrib:0.161.0` on a dedicated, tainted `n1-standard-4` node (3.92 CPU, 13.5 GiB); 4 Gi memory limit, no CPU limit; generators on separate load nodes (`n1-standard-4`, `n2-highcpu-8`, `n4-highcpu-8`) |
+| TM | Helm chart 1.74.1 with the pipeline limit lifted, VPA on. Gateway runs: `n1-standard-4` node (1-10T), `n4-highcpu-16` (20-100T). Full stack: everything on one `n4-highcpu-32` (31.9 CPU, 61.7 GiB), image `1.74.1-loadtest-mem` (gateway limit 2 GiB, agents 3 GiB) |
+| Collector config | copied from the TM gateway: `memory_limiter` 1s / 75 % / 15 %, `batch` 512 / 10 s, `otlp_http` exporter per pipeline with gzip, retry 5 s / 30 s / 300 s, queue size `max(1, 256 / tenants)` batches (TM's formula) |
+| Enrichment ("transforms") | logs: `set-observed-time-if-zero`, `k8s_attributes`, `insert-cluster-attributes` · traces: `k8s_attributes`, `insert-cluster-attributes` · metrics: `set-kyma-input-name-otlp`, `k8s_attributes`, `insert-cluster-attributes`, `drop-kyma-attributes` |
+| Fault backend | 70 % HTTP 503, 1 s delay on every response, for pipeline `p-000` of each signal |
 
-- **Load generators:** `n4-highcpu-8` (handling CPU-intensive traffic generation)
-- **OTel Collector:** `n1-standard-4`
-- **Supporting infrastructure:** `n1-standard-4`
+**Measured** (steady window, from `otelcol_*` self-metrics and cAdvisor): received, exported and refused signals/s, enqueue and send failures, exporter queue fill, CPU (avg and p95 over all pods), memory (max RSS of one pod), restarts and OOM kills, and config size.
 
-Source code and deployment manifests reside in [`./load-test`](./load-test).
+**Limits checked** per run: OOM kill, restart, data loss (failures on healthy exporters or < 99 % delivered), throughput < 95 % for 5 min, receiver refusals, queue > 80 %, memory > 80 % of the limit, CPU ≥ 90 %, and > 5 % drop on healthy tenants during a fault. A watchdog marks a run invalid when a backend, `vm-single` or the load node fails.
 
-Execution is driven by a benchmark job that first deploys a fresh OTel Collector alongside three storage backends. Once healthy, three load-generator pods spin up (one per signal type). Under the hood, each pod runs OpenTelemetry's `telemetrygen` in a custom image with shell access, launching a dedicated process per tenant on startup.
+---
 
-Custom collector pipelines are configured accordingly for every tenant and signal type. After each test run and a cooldown window, the benchmark job queries VictoriaMetrics (or any Prometheus-compatible backend) to gather metrics.
+## 3. TM gateway results
 
-Below is an architectural overview of this test setup:
-![Architecture sketch of the load test deployed on a Gardener shoot](./benchmark-setup-otel.drawio.svg)
+> **OTLP only** · real TM OTLP gateway (Fan-Out shape) · 25k signals/s
 
-### Performance Results: Baseline Setup (Minimal Processing)
+<p align="center">
+  <img src="docs/assets/results/tm-gateway-cpu.png" width="49%">
+  <img src="docs/assets/results/tm-gateway-memory.png" width="49%">
+</p>
 
-Both configurations were tested under a constant steady-state load of **25k signals/s** (6,000 logs/s, 9,000 metrics/s, and 10,000 traces/s) across a 10-minute window on an `n1-standard-4` node without heavy transformations. While Routing was evaluated across all tiers from 1 to 100 tenants, Fan-Out was benchmarked at scale (50 and 100 tenants):
-
-| Tenants | Architecture | Pipelines | CPU avg | CPU p95 | RSS max | Working Set max | Config Size | Valid Throughput |
+| Tenants | 1 | 3 | 5 | 10 | 20 | 30 | 50 | 100 |
 |---|---|---|---|---|---|---|---|---|
-| 1 | **Routing** | 6 | 0.44 | 0.51 | 253 MiB | 116 MiB | 3.5 KiB | 100% (0 drops) |
-| 3 | **Routing** | 12 | 0.44 | 0.50 | 262 MiB | 131 MiB | 7.3 KiB | 100% (0 drops) |
-| 5 | **Routing** | 18 | 0.46 | 0.53 | 278 MiB | 145 MiB | 11.2 KiB | 100% (0 drops) |
-| 10 | **Routing** | 33 | 0.45 | 0.52 | 305 MiB | 194 MiB | 20.8 KiB | 100% (0 drops) |
-| 20 | **Routing** | 63 | 0.47 | 0.54 | 381 MiB | 268 MiB | 40.1 KiB | 100% (0 drops) |
-| 30 | **Routing** | 93 | 0.45 | 0.52 | 460 MiB | 369 MiB | 59.2 KiB | 100% (0 drops) |
-| 50 | **Routing** | 153 | 0.46 | 0.54 | 606 MiB | 550 MiB | 97.6 KiB | 100% (0 drops) |
-| 50 | **Fan-Out** | 150 | 1.62 | 1.82 | 676 MiB | 704 MiB | 103.9 KiB | 100% (0 drops) |
-| 100 | **Routing** | 303 | 0.49 | 0.59 | 868 MiB | 1 031 MiB | 193.7 KiB | 100% (0 drops) |
-| 100 | **Fan-Out** | 300 | 2.83 | 3.35 | 1 066 MiB | 1 164 MiB | 206.8 KiB | ~7–8% dropped ⚠ |
+| CPU avg (cores) | 0.30 | 0.38 | 0.45 | 0.61 | 0.89 | 1.13 | 1.88 | **4.41** |
+| CPU p95 | 0.37 | 0.46 | 0.51 | 0.72 | 0.99 | 1.23 | 2.13 | 5.10 |
+| RSS max (MiB) | 167 | 186 | 211 | 248 | 376 | 466 | 703 | 795 |
+| Delivered | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % |
 
-```mermaid
+- The TM gateway delivers 100 % up to 100 tenants (291 pipelines, 2,365 processor instances), with no refusals or restarts.
+- CPU grows faster than linearly: **4.41 cores at 100 tenants, about 7× the 0.64 cores of Routing** ([section 4](#4-fan-out-vs-routing)).
+- 1-10T ran on the `n1-standard-4` node, 20-100T on `n4-highcpu-16`. In the first setup, 30T and 100T failed: the receiver refused the data (31 % and < 3 % delivered) while exporter queues were at most half full. The root cause is still open; the `memory_limiter` is the likely candidate.
+
 ---
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#dc2626, #16a34a"
+
+## 4. Fan-Out vs. Routing
+
+> **OTLP only** · plain OTel Collector with TM enrichment · 25k signals/s · red = Fan-Out, green = Routing
+
+<p align="center"><img src="docs/assets/results/fan-out-vs-routing.png" width="75%"></p>
+
+- **Fan-Out** (today's TM gateway): every pipeline gets 100 % of the data, enriches it and then filters out (N-1)/N of it. For metrics, enrichment runs once and a `forward` connector fans out.
+- **Routing:** one input pipeline per signal enriches and batches once; the `routing` connector moves each item to its tenant pipeline (`batch` → exporter). No filters.
+
+<p align="center">
+  <img src="docs/assets/results/routing-vs-fan-out-cpu.png" width="49%">
+  <img src="docs/assets/results/routing-vs-fan-out-memory.png" width="49%">
+</p>
+<p align="center"><img src="docs/assets/results/routing-vs-fan-out-processors.png" width="49%"></p>
+
+| Tenants | 1 | 10 | 20 | 50 | 100 |
+|---|---|---|---|---|---|
+| CPU avg Routing / Fan-Out (cores) | 0.54 / 0.56 | 0.58 / 0.92 | 0.62 / 1.30 | 0.58 / 2.47 | **0.64 / 3.47** |
+| RSS max Routing / Fan-Out (MiB) | 271 / 279 | 324 / 370 | 384 / 488 | 584 / 922 | 972 / 1,878 |
+| Processor instances Routing / Fan-Out | 18 / 18 | 45 / 144 | 75 / 284 | 165 / 704 | 315 / 1,404 |
+| Dropped logs + metrics, Fan-Out | 0.2 % | 0.3 % | 1.0 % | 4.7 % | **44 %** |
+
+- **Routing** stays at 0.54-0.64 cores from 1 to 100 tenants with zero drops.
+- **Fan-Out** adds about 14 processor instances per tenant (Routing: 3). At 100 tenants it uses the whole node (p95 3.98 cores), queues fill and it loses 41 % of logs, 47 % of metrics and 9 % of traces.
+
 ---
-xychart-beta
-    title "Baseline CPU Usage (Avg Cores): Fan-Out vs. Routing"
-    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
-    y-axis "CPU Cores" 0 --> 3.5
-    bar "Fan-Out" [0, 0, 0, 0, 0, 0, 1.62, 2.83]
-    bar "Routing" [0.44, 0.44, 0.46, 0.45, 0.47, 0.45, 0.46, 0.49]
-```
 
-```mermaid
----
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#dc2626, #16a34a"
----
-xychart-beta
-    title "Baseline Memory (RSS Max MiB): Fan-Out vs. Routing"
-    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
-    y-axis "RSS Max (MiB)" 200 --> 1200
-    bar "Fan-Out" [0, 0, 0, 0, 0, 0, 676, 1066]
-    bar "Routing" [253, 262, 278, 305, 381, 460, 606, 868]
-```
+## 5. TM full stack
 
-*(Note: Fan-Out baseline tests were executed only at 50 and 100 tenants).*
+> **OTLP + log agent + metric agent** · gateway: 10k spans, 2k metric points, 3k logs/s · log agent: 3k lines/s · metric agent: 7k points/s · one `n4-highcpu-32` node
 
-#### Key Takeaways (Baseline)
+<p align="center">
+  <img src="docs/assets/results/full-stack-cpu.png" width="49%">
+  <img src="docs/assets/results/full-stack-memory.png" width="49%">
+</p>
 
-- **CPU stays constant with routing**: Centralizing `k8s_attributes` enrichment in an initial pipeline prevents duplicate work, keeping CPU usage around ~0.49 cores even at 100 tenants (303 pipelines).
-- **Fan-out suffers from processor duplication**: Duplicating processors across every pipeline instantiated 900 processor instances at 100 tenants, pushing CPU usage to 2.83 cores (~6x higher) and causing queue saturation and message drops.
-- **Config size scales linearly**: Reaching ~194 KiB at 100 tenants, remaining well below Kubernetes' 1 MiB ConfigMap boundary.
+Red = log agent, blue = gateway, navy = metric agent. CPU bars overlap from zero; memory bars are stacked.
 
-### Performance Results: Production Setup (With Transforms & Enrichments)
-
-To evaluate real-world production overhead, tests were repeated with full Telemetry Manager gateway processing enabled (`k8s_attributes` enrichment and OTTL `transform` processors across all tenant pipelines) under identical 25k signals/s traffic on an `n1-standard-4` node.
-
-#### 1. Architecture Comparison with Transforms
-
-Activating transformations highlights the stark contrast between architectures: Routing comfortably absorbs the extra processing, whereas Fan-Out saturates node CPU and drops nearly half of incoming signals:
-
-| Architecture | Tenants | Pipelines | Processor Instances | CPU avg | CPU p95 | RSS max | Valid Throughput |
-|---|---|---|---|---|---|---|---|
-| **Routing** | 1 | 6 | 18 | 0.54 | 0.65 | 271 MiB | 100% (0 drops) |
-| **Fan-Out** | 1 | 4 | 18 | 0.56 | 0.62 | 279 MiB | 100% (0 drops) |
-| **Routing** | 10 | 33 | 45 | 0.58 | 0.67 | 324 MiB | 100% (0 drops) |
-| **Fan-Out** | 10 | 31 | 144 | 0.92 | 1.13 | 370 MiB | 100% (0 drops) |
-| **Routing** | 20 | 63 | 75 | 0.62 | 0.75 | 384 MiB | 100% (0 drops) |
-| **Fan-Out** | 20 | 61 | 284 | 1.30 | 1.48 | 488 MiB | 100% (0 drops) |
-| **Routing** | 50 | 153 | 165 | 0.58 | 0.70 | 584 MiB | 100% (0 drops) |
-| **Fan-Out** | 50 | 151 | 704 | 2.47 | 2.97 | 922 MiB | Degraded (~5% drops) |
-| **Routing** | 100 | 303 | 315 | 0.64 | 0.77 | 972 MiB | 100% (0 drops) |
-| **Fan-Out** | 100 | 301 | 1 404 | 3.47 | 3.98 | 1 878 MiB | **Severe drop** (41% logs, 47% metrics) ⚠ |
-
-```mermaid
----
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#dc2626, #16a34a"
----
-xychart-beta
-    title "CPU Usage (Avg Cores) with Transforms: Routing vs. Fan-Out"
-    x-axis ["1T", "10T", "20T", "50T", "100T"]
-    y-axis "CPU Cores" 0 --> 4
-    bar "Fan-Out" [0.56, 0.92, 1.30, 2.47, 3.47]
-    bar "Routing" [0.54, 0.58, 0.62, 0.58, 0.64]
-    
-```
-
-```mermaid
----
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#dc2626, #16a34a"
----
-xychart-beta
-    title "Memory (RSS Max MiB) with Transforms: Routing vs. Fan-Out"
-    x-axis ["1T", "10T", "20T", "50T", "100T"]
-    y-axis "RSS Max (MiB)" 200 --> 2000
-    bar "Fan-Out" [279, 370, 488, 922, 1878]
-    bar "Routing" [271, 324, 384, 584, 972]
-
-```
-
-#### Key Takeaways (Transforms)
-
-- **Routing handles transformations with negligible scaling penalty**: Transform processing increases baseline CPU by only ~0.10–0.15 cores. As tenant counts scale from 1 to 100, average CPU remains below 0.64 cores (p95 0.77 cores) with zero dropped telemetry.
-- **Fan-out causes severe node saturation and data loss**: Duplicating transform processors spawns 1,404 processor instances at 100 tenants. Average CPU shoots to 3.47 cores (p95 3.98 cores, reaching 100% of node capacity), internal queues fill up completely (`queue_util_max 1.0`), and the collector drops 41% of logs and 47% of metrics.
-- **Memory stays contained in Routing**: Centralized routing caps peak RSS memory at 972 MiB at 100 tenants, compared to 1,878 MiB in Fan-Out.
-
-### Performance Results: Current Telemetry Manager Implementation (Target: tm)
-
-To assess how Kyma's current Telemetry Manager behaves if the 5-pipeline limit is lifted without architectural changes, load tests targeted the live Telemetry Manager-managed collector (`target: tm`, Fan-Out Shape `F1`) under standard 25k signals/s traffic (6,000 logs/s, 9,000 metrics/s, and 10,000 traces/s) across 10-minute steady-state runs on an `n1-standard-4` node:
-
-| Tenants | Logs rx/s | Metrics rx/s | Traces rx/s | Refused Requests | CPU avg | CPU p95 | RSS max | Status |
+| Tenants | 1 | 3 | 5 | 10 | 20 | 30 | 50 | 100 |
 |---|---|---|---|---|---|---|---|---|
-| 1 | 5 994 | 8 992 | 9 992 | 0 | 0.30 | 0.37 | 167 MiB | 100% (Valid ✓) |
-| 3 | 5 993 | 8 995 | 9 994 | 0 | 0.38 | 0.46 | 186 MiB | 100% (Valid ✓) |
-| 5 | 5 996 | 8 997 | 9 994 | 0 | 0.45 | 0.51 | 211 MiB | 100% (Valid ✓) |
-| 10 | 5 998 | 8 997 | 9 993 | 0 | 0.61 | 0.72 | 248 MiB | 100% (Valid ✓) |
-| 20 | 5 977 | 8 961 | 9 978 | 0 | 1.06 | 1.27 | 284 MiB | 100% (Valid ✓) |
-| 30 | 1 872 | 2 801 | 8 719 | 742 513 ⚠ | 2.43 | 2.71 | 254 MiB | Degraded (~31% logs/metrics) ✗ |
-| 50 | 74 | 138 | 718 | 1 577 204 ⚠ | 2.78 | 3.19 | 281 MiB | **Severe drop** (<2% logs/metrics) ✗ |
-| 100 | 153 | 256 | 513 | 2 989 680 ⚠ | 4.70 | 5.69 | 483 MiB | **Complete collapse** (>2.9M refused) ✗ |
+| Gateway CPU / RSS | 0.19 / 200 | 0.24 / 211 | 0.28 / 228 | 0.38 / 265 | 0.59 / 383 | 0.80 / 499 | 1.29 / 914 | 2.42 / 1,278 |
+| Log agent CPU / RSS | 0.21 / 154 | 0.51 / 188 | 0.87 / 221 | 1.73 / 310 | 4.00 / 440 | 6.15 / 616 | 10.39 / 857 | **21.64** / 1,692 |
+| Metric agent CPU / RSS | 0.05 / 612 | 0.06 / 590 | 0.07 / 628 | 0.10 / 549 | 0.16 / 575 | 0.22 / 586 | 0.36 / 636 | 0.80 / 821 |
 
-```mermaid
+CPU in cores (average), RSS max in MiB.
+
+<p align="center"><img src="docs/assets/results/full-stack-log-agent-received.png" width="49%"></p>
+
+- All tiers ran with **no refusals, restarts or OOM kills**. Gateway and metric agent deliver 100 %. The log agent reads 100 % up to 50 tenants and **95 % at 100 tenants**, where the node reaches 88.5 % CPU.
+- Cost per added tenant: gateway +0.02 cores and +11 MiB, metric agent +0.008 cores, **log agent +0.21 cores** and +16 MiB.
+- An earlier sweep (`n4-highcpu-16`, 5k log lines/s, older TM build) ran clean to 20 tenants (log agent 7.15 cores). At 30 tenants the log agent read only 22-38 % of the lines **without refusing anything**, while the VPA had lowered its memory limit to 473 MiB.
+
 ---
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#dc2626"
+
+## 6. Log agent scalability
+
+> **OTLP + log agent + metric agent** · same 3k lines/s at every tier
+
+<p align="center"><img src="docs/assets/results/log-agent-receivers.png" width="75%"></p>
+
+- The **OTLP gateway** has one shared receiver: each item is decoded and counted once, then copied to the pipelines.
+- The **log agent** creates **one `filelog` receiver per LogPipeline**. With N pipelines it reads the same container log files N times and runs the full parse chain N times (containerd, JSON, severity, trace context) before each pipeline's filter drops (N-1)/N of the lines.
+- The receiver metric counts each line once per pipeline: with 10 tenants, 6k real lines/s show up as 60k logs/s.
+
+<p align="center"><img src="docs/assets/results/log-agent-cpu.png" width="49%"></p>
+
+| Tenants | 1 | 3 | 5 | 10 | 20 | 30 | 50 | 100 |
+|---|---|---|---|---|---|---|---|---|
+| Log agent CPU (cores) | 0.21 | 0.51 | 0.87 | 1.73 | 4.00 | 6.15 | 10.39 | 21.64 |
+| µs per line per pipeline | 68 | 57 | 58 | 58 | 67 | 68 | 69 | 72 |
+
+**Cost model:** `log agent CPU ≈ 0.07 ms × log lines/s on the node × LogPipelines`. It also predicts the 5k lines/s sweep (7.2 cores expected at 20 tenants, 7.15 measured).
+
+**Proposed fix:** one shared `filelog` receiver and parse chain, then route by tenant. Reading and parsing run once per line; only routing, processing and export run per tenant. Expected cost close to the 1-tenant cost (about 0.2 cores at 3k lines/s); not measured yet.
+
+<p align="center"><img src="docs/assets/results/log-agent-fix.png" width="65%"></p>
+
 ---
-xychart-beta
-    title "Telemetry Manager (F1): CPU Avg (Cores) vs Tenants"
-    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
-    y-axis "CPU Cores" 0 --> 5
-    bar [0.30, 0.38, 0.45, 0.61, 1.06, 2.43, 2.78, 4.70]
-```
 
-```mermaid
+## 7. ConfigMap size
+
+> Kubernetes limits a ConfigMap to 1 MiB (1,024 KiB). All sizes are measured from the generated configs.
+
+<p align="center">
+  <img src="docs/assets/results/configmap-full-stack.png" width="49%">
+  <img src="docs/assets/results/configmap-full-stack-extrapolated.png" width="49%">
+</p>
+
+Red = log agent, blue = gateway, navy = metric agent. Right: solid = measured, dotted = linear extrapolation to 1 MiB.
+
+| Config | At 100 tenants | Per tenant | Reaches 1 MiB at |
+|---|---|---|---|
+| TM log agent | **589 KiB (57 %)** | 5.8 KiB | **~175 tenants** |
+| TM gateway (full stack) | 355 KiB (35 %) | 3.4 KiB | ~296 tenants |
+| TM metric agent | 194 KiB (19 %) | 1.75 KiB | ~575 tenants |
+| Plain collector, Fan-Out + transforms | 226 KiB (22 %) | 2.2 KiB | ~461 tenants |
+| Plain collector, Routing + transforms | 193 KiB (19 %) | 1.9 KiB | ~545 tenants |
+
+- Config size grows exactly linearly with the tenant count. **No ConfigMap limit is reached at this scale.**
+- Fallback if ever needed: the collector merges its config from several ConfigMaps (the load-test tool already splits configs this way), so TM can split, for example at 80 % fill.
+
 ---
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#dc2626"
+
+## 8. Fault isolation
+
+> **OTLP only** · pipeline `p-000` of each signal exports to a backend that returns 70 % HTTP 503 with 1 s delay
+
+<p align="center"><img src="docs/assets/results/fault-tm-gateway-delivered.png" width="49%"></p>
+
+| Tenants | 2 | 3 | 5 | 10 | 20 | 30 | 50 | 100 |
+|---|---|---|---|---|---|---|---|---|
+| Healthy tenants delivered (lowest signal) | 100 % | 100 % | 100 % | 99.9 % | 99.9 % | 99.9 % | 99.8 % | 99.5 % |
+| Faulty tenant exported (signals/s, lowest signal) | 134 | 151 | 141 | 139 | 144 | 99 | 55 | 23 |
+| Gateway CPU avg (cores) | 0.28 | 0.31 | 0.40 | 0.56 | 0.85 | 1.36 | 1.91 | 3.43 |
+| Gateway RSS max (MiB) | 553 | 497 | 421 | 385 | 427 | 517 | 862 | 1,273 |
+
+- **TM gateway:** healthy tenants keep ≥ 99.5 % delivery up to 100 tenants, with **0 send or enqueue failures** on healthy exporters. Dedicated exporter queues contain the retries.
+- The faulty tenant's own throughput falls as N grows, because its queue shrinks with `max(1, 256 / tenants)`.
+- **Plain collector** (2, 20, 50 tenants): same isolation in both shapes, 0 failures on healthy exporters. During the fault Routing stays at 0.50-0.64 cores; Fan-Out reaches 2.68 cores at 50 tenants.
+- Note: for TM runs the tool cannot separate healthy from faulty exporters, so its automatic data-loss and queue flags come from the faulty pipeline only. The table above uses per-exporter values.
+
 ---
-xychart-beta
-    title "Telemetry Manager (F1): Memory Growth (RSS Max in MiB)"
-    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
-    y-axis "RSS Max (MiB)" 150 --> 600
-    bar [167, 186, 211, 248, 284, 254, 281, 483]
-```
 
-```mermaid
+## 9. Persistent queues
+
+A BDC request asks for file-backed (persistent) queues for OTel logs. This was not load-tested, but the deployment model decides how it would scale.
+
+<p align="center"><img src="docs/assets/results/persistent-queues.png" width="75%"></p>
+
+- **StatefulSet** (gateway): `volumeClaimTemplates` give each pod its own PVC on a network volume that follows the pod.
+- **DaemonSet** (log agent): no claim templates, so queues would live on the node-local disk (`hostPath`). With one queue per exporter, disk usage per node grows with the number of LogPipelines, the same pattern as Fluent Bit buffers. A DaemonSet can mount one shared ReadWriteMany PVC, but cannot get its own claim per pod.
+- Disk usage per pipeline must be measured before persistent log queues are enabled.
+
 ---
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#dc2626"
----
-xychart-beta
-    title "Telemetry Manager (F1): Delivered Throughput (% of Offered 25k/s)"
-    x-axis ["1T", "3T", "5T", "10T", "20T", "30T", "50T", "100T"]
-    y-axis "Delivered %" 0 --> 100
-    bar [100, 100, 100, 100, 100, 54, 4, 4]
-```
 
-#### Key Takeaways (Current Telemetry Manager)
+## 10. Conclusion and next steps
 
-- **Manageable up to 20 tenants**: Between 1 and 20 tenants, the manager sustains 100% throughput with CPU usage scaling progressively from 0.30 to 1.06 cores and memory from 167 to 284 MiB.
-- **Cliff at 30 tenants**: Beyond 20 tenants, duplicated pipeline processing causes connection refusals and queue starvation, dropping throughput to ~31% and triggering hard limit `H4`.
-- **Complete breakdown at scale**: At 50 and 100 tenants, the collector is overwhelmed with millions of refused requests, driving CPU consumption to 4.70 cores avg (5.69 cores p95, heavily throttled on a 3.92 core node) and delivering less than 3% of telemetry. This confirms that lifting the pipeline limit requires shifting to the unified routing architecture.
+### Recommended limits
 
-### Failure & Tenant Isolation Results
+| Pipeline type | Today | Now | With routing |
+|---|---|---|---|
+| **TracePipeline, MetricPipeline** | 5 | **20** | 100 |
+| **LogPipeline** | 5 | **10** | 100 |
 
-To evaluate resilience against "noisy neighbor" failures and backpressure, fault-injection tests targeted pipeline `p-000` across all three signal types. The faulty backend returned **70% HTTP 503 errors** with artificial delays (1,000ms delay on both 503 and 200 responses) under continuous 25k signals/s traffic with full gateway transformations enabled.
+- **20 trace and metric pipelines:** every scenario ran clean at 20 tenants, including the TM gateway on a 4-core node with today's queue formula (0.89 cores).
+- **10 LogPipelines:** the log agent costs about 70 µs CPU per log line and pipeline, on every node. 10 pipelines at 1,500 lines/s per node are about 1 core.
+- **100 with routing:** measured on the plain collector (0.64 cores, zero drops at 100 tenants). Routing must be re-tested inside TM before this is promised.
+- A dynamic limit can use the cost model `0.07 ms × log lines/s per node × LogPipelines` against the agent's CPU budget instead of a fixed number.
 
-Detailed raw reports are available in [`results-transforms-routing-faulty.md`](./load-test/results/results-transforms-routing-faulty.md) and [`results-transforms-fan-out-faulty.md`](./load-test/results/results-transforms-fan-out-faulty.md).
+### Unknowns and risks
 
-#### 1. Tenant Isolation Under Downstream Outage
+| Found during testing | Not covered yet |
+|---|---|
+| Log agent cost = pipelines × log rate, on every node | Disk usage of persistent queues per pipeline |
+| Silent log loss: the log agent fell behind without refusing anything | Many failing backends at once (queue memory × N); no OOM threshold was reached |
+| VPA lowers memory limits during load; the agent ran at its limit | Routing inside TM (all routing numbers are from the plain collector) |
+| TM gateway refusals on a small node at 30+ tenants, cause open | TM reconcile and collector rollout with many pipelines |
+| Readiness lags config: at 100 tenants 294 of 303 pipelines were in the config when TM reported them generated | Load per tenant (fixed rate per tenant), single signal types, repeated runs |
 
-Testing verified whether a failing backend causes head-of-line blocking or backpressure that spills into neighboring healthy tenants:
+### Next steps
 
-| Tenants | Architecture | Healthy Delivered (Logs · Metrics · Traces) | Faulty `p-000` Exported/s | Send Failures | Enqueue Failures | Queue Util Max | CPU avg (p95) |
-|---|---|---|---|---|---|---|---|
-| 2 | **Routing** | 100% · 100% · 100% | 167 · 149 · 150 | 0 | 0 | 0.8% | 0.50 (0.57) |
-| 2 | **Fan-Out** | 100% · 100% · 100% | 165 · 143 · 158 | 0 | 0 | 0.8% | 0.56 (0.63) |
-| 20 | **Routing** | 99.9% · 100% · 99.9% | 148 · 148 · 157 | 0 | 0 | 8.3% | 0.64 (0.78) |
-| 20 | **Fan-Out** | 100% · 99.9% · 100% | 144 · 160 · 143 | 0 | 0 | 8.3% | 1.36 (1.62) |
-| 50 | **Routing** | 100% · 99.9% · 99.8% | 55 · 58 · 68 | 0 | 0 | 20.0% | 0.61 (0.69) |
-| 50 | **Fan-Out** | 99.8% · 100% · 99.8% | 62 · 47 · 62 | 0 | 0 | 20.0% | 2.68 (3.23) |
-
-```mermaid
----
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#dc2626, #16a34a"
----
-xychart-beta
-    title "CPU Avg (Cores) During Backend Fault: Fan-Out vs. Routing"
-    x-axis ["2T", "20T", "50T"]
-    y-axis "CPU Cores" 0 --> 3.5
-    bar "Fan-Out" [0.56, 1.36, 2.68]
-    bar "Routing" [0.50, 0.64, 0.61]
-```
-
-#### Key Takeaways (Fault Isolation)
-
-- **Dedicated exporter queues isolate failing tenants**: In both architectures, the internal exporter queue for `p-000` isolated the retry backoff and 503 delays without blocking global pipelines. Maximum queue utilization peaked at 20% on the faulty pipeline, causing zero enqueue or send errors for healthy tenants.
-- **Healthy tenant throughput remained at 100%**: Unaffected tenants experienced zero dropped signals or degraded throughput despite the persistent outage on tenant `p-000`.
-- **Routing shields against resource spikes during outages**: Routing CPU consumption remained completely stable at ~0.61 cores at 50 tenants. While Fan-Out also isolated tenant queues successfully, its duplicated processors still incurred high CPU overhead (2.68 cores avg / 3.23 cores p95).
+1. **Raise the limit:** TracePipeline and MetricPipeline 5 → 20, LogPipeline 5 → 10.
+2. **Fix queue sizing:** decouple the exporter queue size from the pipeline count; confirm the cause of the gateway refusals.
+3. **Routing in TM:** enrich once plus routing connector in the gateway; one shared `filelog` receiver plus routing in the log agent.
+4. **Close the gaps:** persistent queues, many failing backends, routing re-tested in TM, repeated runs.
