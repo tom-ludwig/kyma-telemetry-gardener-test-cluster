@@ -1,9 +1,6 @@
 # Load Test Results — TM Gateway — Fan-Out — 2026-10-26 to 2026-10-29
 
-Shape F1, load A (6 000 logs/s, 9 000 metrics/s, 10 000 traces/s total, all to the gateway), healthy, Telemetry Manager Helm chart 1.74.1 with the pipeline limit lifted and VPA on, `-target=tm`. Two setups, as used in `result.md` section 3:
-
-- Runs 1-4 (1-10 tenants, 2026-10-26/27): tool commit `d46909f0`, warmup 2m, 10m steady, gateway on `n1-standard-4` (3.92 CPU, 13.5 GiB), load node `n4-highcpu-8`.
-- Runs 5-8 (20-100 tenants, 2026-10-29): tool commit `7678af0f`, warmup 3m, 10m steady, gateway and generators pinned with `-node-selector` to an `n4-highcpu-16` load node, metric `forward` connector and exporter queue sized independently of the tenant count (instead of TM's `max(1, 256 / tenants)`).
+Shape F1, load A (6 000 logs/s, 9 000 metrics/s, 10 000 traces/s total, all to the gateway), healthy, Telemetry Manager Helm chart 1.74.1 with the pipeline limit lifted and VPA on, `-target=tm`. Tool commit `7678af0f`, warmup 3m, 10m steady, gateway and generators pinned with `-node-selector` to an `n4-highcpu-16` load node, metric `forward` connector and exporter queue sized independently of the tenant count (instead of TM's `max(1, 256 / tenants)`).
 
 Raw data: `raw-results-new-telemetry-manager.txt` (line 319: 1T, 323: 3T, 454: 5T, 3: 10T, 458: 20T, 464: 30T, 460: 50T, 462: 100T).
 

@@ -62,7 +62,7 @@ A load-test Job in the cluster deploys the pipelines, starts one generator proce
 | Phases | 2 min warm-up, **10 min steady state (measured)**, 1-2 min cool-down; one run per tier |
 | Generators | telemetrygen v0.163.0 (OTLP), stdout-log-generator, avalanche v0.7.0 |
 | Plain OTel Collector | `otel/opentelemetry-collector-contrib:0.161.0` on a dedicated, tainted `n1-standard-4` node (3.92 CPU, 13.5 GiB); 4 Gi memory limit, no CPU limit; generators on separate load nodes (`n1-standard-4`, `n2-highcpu-8`, `n4-highcpu-8`) |
-| TM | Helm chart 1.74.1 with the pipeline limit lifted, VPA on. Gateway runs: `n1-standard-4` node (1-10T), `n4-highcpu-16` (20-100T). Full stack: everything on one `n4-highcpu-32` (31.9 CPU, 61.7 GiB), image `1.74.1-loadtest-mem` (gateway limit 2 GiB, agents 3 GiB) |
+| TM | Helm chart 1.74.1 with the pipeline limit lifted, VPA on. Gateway runs on an `n4-highcpu-16` node. Full stack: everything on one `n4-highcpu-32` (31.9 CPU, 61.7 GiB), image `1.74.1-loadtest-mem` (gateway limit 2 GiB, agents 3 GiB) |
 | Collector config | copied from the TM gateway: `memory_limiter` 1s / 75 % / 15 %, `batch` 512 / 10 s, `otlp_http` exporter per pipeline with gzip, retry 5 s / 30 s / 300 s, queue size `max(1, 256 / tenants)` batches (TM's formula) |
 | Enrichment ("transforms") | logs: `set-observed-time-if-zero`, `k8s_attributes`, `insert-cluster-attributes` · traces: `k8s_attributes`, `insert-cluster-attributes` · metrics: `set-kyma-input-name-otlp`, `k8s_attributes`, `insert-cluster-attributes`, `drop-kyma-attributes` |
 | Fault backend | 70 % HTTP 503, 1 s delay on every response, for pipeline `p-000` of each signal |
@@ -91,7 +91,7 @@ A load-test Job in the cluster deploys the pipelines, starts one generator proce
 
 - The TM gateway delivers 100 % up to 100 tenants (291 pipelines, 2,365 processor instances), with no refusals or restarts.
 - CPU grows faster than linearly: **4.41 cores at 100 tenants, about 7× the 0.64 cores of Routing** ([section 4](#4-fan-out-vs-routing)).
-- 1-10T ran on the `n1-standard-4` node, 20-100T on `n4-highcpu-16`. In the first setup, 30T and 100T failed: the receiver refused the data (31 % and < 3 % delivered) while exporter queues were at most half full. The root cause is still open; the `memory_limiter` is the likely candidate.
+- In an earlier setup, 30T and 100T failed: the receiver refused the data (31 % and < 3 % delivered) while exporter queues were at most half full. The root cause is still open; the `memory_limiter` is the likely candidate.
 
 ---
 
