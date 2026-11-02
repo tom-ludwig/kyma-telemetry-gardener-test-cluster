@@ -31,9 +31,6 @@ const (
 	ComponentMetricAgent = "metric-agent"
 	ComponentAll         = "all"
 
-	MaxTenants = 100
-	SearchGap  = 5
-
 	// TM gateway: one shared OTLP DaemonSet in kyma-system for all signals.
 	// (The per-signal runtime/prometheus scraping DaemonSets are disabled in these tests.)
 	TMNamespace       = "kyma-system"
@@ -238,45 +235,3 @@ func (s RunSpec) MemoryLimitMi() int { return CollectorMemoryLimitMi }
 
 func TenantID(i int) string   { return fmt.Sprintf("tenant-%03d", i) }
 func PipelineID(i int) string { return fmt.Sprintf("p-%03d", i) }
-
-// NextSearch returns the next tenant count of the binary search, or done.
-// passed holds the outcome (true = no hard limit) of each tenant count run so far.
-func NextSearch(passed map[int]bool) (next int, done bool) {
-	if _, ok := passed[1]; !ok {
-		return 1, false
-	}
-	if !passed[1] {
-		return 0, true // limit already at 1 tenant
-	}
-	ok, ran := passed[MaxTenants]
-	if !ran {
-		return MaxTenants, false
-	}
-	if ok {
-		return 0, true
-	}
-	lo, hi := 1, MaxTenants
-	for n, ok := range passed {
-		if ok && n > lo {
-			lo = n
-		}
-		if !ok && n < hi {
-			hi = n
-		}
-	}
-	if hi-lo <= SearchGap {
-		return 0, true
-	}
-	return (lo + hi) / 2, false
-}
-
-// SmallestFailing returns the smallest tenant count with a hard limit, or 0.
-func SmallestFailing(passed map[int]bool) int {
-	smallest := 0
-	for n, ok := range passed {
-		if !ok && (smallest == 0 || n < smallest) {
-			smallest = n
-		}
-	}
-	return smallest
-}

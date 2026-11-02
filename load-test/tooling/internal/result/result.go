@@ -364,7 +364,7 @@ func (p Prom) QueryCollector(ctx context.Context, s spec.RunSpec, component, age
 	return r, nil
 }
 
-// limits evaluates H1–H4 and S1–S4; S5 needs the healthy record and is added by the caller.
+// limits evaluates H1–H4 and S1–S4.
 func (p Prom) EvalLimits(ctx context.Context, s spec.RunSpec, w Window, rec *Record, nodeACores float64) error {
 	at := func(t time.Time) float64 { return t.Sub(w.Start).Seconds() }
 	for _, c := range s.Components() {
@@ -463,21 +463,6 @@ func splitID(id string) (string, string) {
 		}
 	}
 	return id, ""
-}
-
-// AddIsolation adds S5 for faulty runs: healthy pipelines export > 5 % less than in the healthy run.
-// healthy is the healthy run of the same shape, tenants and load from this process, or nil.
-func AddIsolation(rec *Record, s spec.RunSpec, healthy *Record, w Window) {
-	if s.Health != spec.Faulty || healthy == nil {
-		return
-	}
-	share := float64(s.Tenants-1) / float64(s.Tenants)
-	for name, r := range rec.Signals {
-		base := healthy.Signals[name].ExportedPerS * share
-		if base > 0 && r.ExportedHealthyPerS < 0.95*base {
-			rec.Limit.Add(Hit{ID: "S5", Signal: name, AtS: w.SteadyEnd.Sub(w.Start).Seconds()})
-		}
-	}
 }
 
 // PrintRecord writes the record as one JSON line to stdout; VLAgent ships it to VictoriaLogs.

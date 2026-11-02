@@ -32,8 +32,6 @@ Delete it (`kubectl -n otel-load-test delete job loadtest`) only when its status
 Examples for `args`:
 
 ```yaml
-args: [-matrix]                                   # whole matrix
-args: [-matrix, -only=f1-A-*]                     # part of the matrix
 args: [-shape=F1, -tenants=20, -load=A]           # one run
 args: [-shape=R1, -tenants=50, -load=B, -rate=500]
 args: [-shape=F1, -tenants=3, -warmup=1m, -steady=3m, -cooldown=1m]   # short dry run
@@ -47,8 +45,6 @@ args: [-shape=F1, -tenants=3, -warmup=1m, -steady=3m, -cooldown=1m]   # short dr
 | `-rate`                           | `1000`                                          | Load B: items/s per signal per tenant.                                                                                                                                                             |
 | `-health`                         | `healthy`                                       | `faulty`: pipeline `p-000` of each signal exports to the fault backend.                                                                                                                            |
 | `-rep`                            | `1`                                             | Repetition number.                                                                                                                                                                                 |
-| `-matrix`                         | off                                             | Binary search per shape × load (1, then 100 tenants, then halve), faulty runs at 5, 20 and 100 tenants, each after the healthy run of the same size, 3 repetitions at 5 tenants and at each limit. |
-| `-only`                           |                                                 | Matrix: only run IDs matching this glob.                                                                                                                                                           |
 | `-warmup`, `-steady`, `-cooldown` | `5m`, `20m`, `3m`                               | Run phases; only `-steady` is measured.                                                                                                                                                            |
 | `-vm-url`                         | `http://vmsingle-vm-single.monitoring.svc:8428` | Self-monitoring vm-single.                                                                                                                                                                         |
 | `-skip-preflight`                 | off                                             | Skip preflight cluster capacity, backend readiness, and disk checks.                                                                                                                               |
@@ -62,7 +58,7 @@ Each run prints one JSON line on stdout: `{"msg":"loadtest result","result":{…
 
 Run IDs: `<shape>-<load>-t<tenants>-<health>-r<rep>`, for example `f1-A-t050-healthy-r1` or `r1-B1000-t005-faulty-r1`. `result.run.steady_start` and `steady_end` are the measured window; collector series carry the label `loadtest_kyma_project_io_run=<run-id>`.
 
-The record holds the run's inputs (`run.args`, `run.tool_commit`, phases, generator and fault backend settings, node sizes in `env`), config size, per-signal throughput and failures, collector memory and CPU, backend checks, and the limits hit (`H1`–`H4` hard, `S1`–`S5` soft).
+The record holds the run's inputs (`run.args`, `run.tool_commit`, phases, generator and fault backend settings, node sizes in `env`), config size, per-signal throughput and failures, collector memory and CPU, backend checks, and the limits hit (`H1`–`H4` hard, `S1`–`S4` soft).
 
 ## What stops a run
 
@@ -71,14 +67,12 @@ The record holds the run's inputs (`run.args`, `run.tool_commit`, phases, genera
 - A collector OOM kill, eviction or restart does not stop the run; it is a result (H1/H2), read from the pod status.
 - A shortfall with a non-saturated load node is a collector limit (H3/H4), not a broken run.
 
-In `-matrix` mode any of these stops the whole matrix. A new Job starts the matrix from the beginning; use `-only` to skip finished runs.
-
 ## Layout
 
 ```
 cmd/loadtest/main.go          flags, start
 internal/
-├── spec/                     run spec, tenants, rates, binary search
+├── spec/                     run spec, tenants, rates
 │   └── signals.yaml          per-signal settings: backend, port, OTLP path, load A rate, log body size
 ├── manifests/                Kubernetes objects and collector config per run
 │   ├── collector-config.yaml static part of the collector config (from the telemetry-manager OTLP gateway)
@@ -87,7 +81,7 @@ internal/
 │   ├── fault-backend.yaml    fault backend for faulty runs
 │   └── pipeline-service.yaml Service template, one per pipeline
 ├── result/                   vm-single queries, limits, result record
-└── runner/                   run protocol, preflight, watchdog, matrix
+└── runner/                   run protocol, preflight, watchdog
 job.yaml                      Job that starts the tool
 ```
 

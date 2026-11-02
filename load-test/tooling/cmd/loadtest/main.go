@@ -34,8 +34,6 @@ func main() {
 	flag.StringVar(&s.Health, "health", spec.Healthy, "healthy or faulty (p-000 of each signal goes to the fault backend)")
 	flag.IntVar(&s.Rep, "rep", 1, "repetition number, part of the run ID")
 	flag.IntVar(&s.Rate, "rate", 1000, "load B: items/s per signal per tenant")
-	matrix := flag.Bool("matrix", false, "run the whole matrix (binary search, faulty runs, repetitions)")
-	only := flag.String("only", "", "matrix: only run IDs matching this glob, e.g. 'otel-f1-A-*'")
 	vmURL := flag.String("vm-url", "http://vmsingle-vm-single.monitoring.svc:8428", "self-monitoring vm-single")
 	warmup := flag.Duration("warmup", 5*time.Minute, "warm-up, not measured")
 	steady := flag.Duration("steady", 20*time.Minute, "measured steady state")
@@ -48,12 +46,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := run(s, *matrix, *only, *vmURL, *warmup, *steady, *cooldown, *skipPreflight, ns); err != nil {
+	if err := run(s, *vmURL, *warmup, *steady, *cooldown, *skipPreflight, ns); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldown time.Duration, skipPreflight bool, nodeSelector map[string]string) error {
+func run(s spec.RunSpec, vmURL string, warmup, steady, cooldown time.Duration, skipPreflight bool, nodeSelector map[string]string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -68,12 +66,6 @@ func run(s spec.RunSpec, matrix bool, only, vmURL string, warmup, steady, cooldo
 	r, err := runner.New(k, result.Prom{API: promv1.NewAPI(promClient)}, warmup, steady, cooldown, os.Args[1:], skipPreflight, nodeSelector)
 	if err != nil {
 		return err
-	}
-	if matrix && s.Component == spec.ComponentAll {
-		return fmt.Errorf("-component all runs once at -tenants, not with -matrix")
-	}
-	if matrix {
-		return r.Matrix(ctx, s.Target, s.Component, s.Rate, only)
 	}
 	if err := s.Validate(); err != nil {
 		return err

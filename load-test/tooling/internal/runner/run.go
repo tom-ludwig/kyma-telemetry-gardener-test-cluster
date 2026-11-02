@@ -27,8 +27,6 @@ type Runner struct {
 	warmup, steady, cooldown time.Duration
 	args                     []string // flags as passed, for the result record
 	genCPU, genMemory        resource.Quantity
-	done                     map[string]*result.Record // records of this process by run ID
-	runFn                    func(context.Context, spec.RunSpec) (*result.Record, error)
 	skipPreflight            bool
 	nodeSelector             map[string]string
 }
@@ -38,13 +36,11 @@ func New(k client.Client, p result.Prom, warmup, steady, cooldown time.Duration,
 	if err != nil {
 		return nil, err
 	}
-	r := &Runner{
+	return &Runner{
 		k: k, p: p, warmup: warmup, steady: steady, cooldown: cooldown, args: args,
-		genCPU: cpu, genMemory: memory, done: map[string]*result.Record{},
+		genCPU: cpu, genMemory: memory,
 		skipPreflight: skipPreflight, nodeSelector: nodeSelector,
-	}
-	r.runFn = r.Run
-	return r, nil
+	}, nil
 }
 
 // Run executes one run and prints its result record.
@@ -252,16 +248,7 @@ func (r *Runner) fill(ctx context.Context, s spec.RunSpec, w result.Window, n no
 		}
 		rec.Signals[u.Key()] = res
 	}
-	if err := r.p.EvalLimits(ctx, s, w, rec, n.env.CollectorNode.CPU); err != nil {
-		return err
-	}
-	// S5 isolation compares a faulty run with its healthy baseline.
-	if s.Target == spec.TargetOTel {
-		healthy := s
-		healthy.Health, healthy.Rep = spec.Healthy, 1
-		result.AddIsolation(rec, s, r.done[healthy.ID()], w)
-	}
-	return nil
+	return r.p.EvalLimits(ctx, s, w, rec, n.env.CollectorNode.CPU)
 }
 
 // waitDebugBackend waits until the per-run nop debug collector pod is Ready in ns, so the

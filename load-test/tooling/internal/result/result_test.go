@@ -97,18 +97,6 @@ func TestLimitsOrderAndHard(t *testing.T) {
 	}
 }
 
-// The faulty exporter's successful sends must not hide a drop of the healthy pipelines.
-func TestIsolationUsesHealthyExporters(t *testing.T) {
-	s := spec.RunSpec{Shape: spec.ShapeF1, Tenants: 5, Load: spec.LoadA, Health: spec.Faulty, Rep: 1}
-	healthy := &Record{Signals: map[string]SignalResult{"traces": {ExportedPerS: 1000}}}
-	// healthy pipelines: 740/s (baseline 800/s, -7.5 %); with p-000's partial sends the total looks fine
-	faulty := &Record{Signals: map[string]SignalResult{"traces": {ExportedPerS: 800, ExportedHealthyPerS: 740}}}
-	AddIsolation(faulty, s, healthy, Window{})
-	if faulty.Limit.First == nil || faulty.Limit.First.ID != "S5" {
-		t.Errorf("want S5, got %+v", faulty.Limit)
-	}
-}
-
 func TestCollectorLimits(t *testing.T) {
 	at := 120.0
 	rec := &Record{Collector: CollectorResult{Restarts: 1, RestartAtS: &at, OOMKilled: true, OOMAtS: &at}}

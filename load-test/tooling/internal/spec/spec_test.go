@@ -59,34 +59,6 @@ func TestRates(t *testing.T) {
 	}
 }
 
-// simulate runs the search against a collector that fails from limit tenants on.
-func simulate(limit int) (runs []int, failing int) {
-	passed := map[int]bool{}
-	for {
-		n, done := NextSearch(passed)
-		if done {
-			return runs, SmallestFailing(passed)
-		}
-		runs = append(runs, n)
-		passed[n] = n < limit
-	}
-}
-
-func TestSearch(t *testing.T) {
-	runs, failing := simulate(1000)
-	if len(runs) != 2 || failing != 0 {
-		t.Errorf("100 passes: runs %v, failing %d; want [1 100], 0", runs, failing)
-	}
-	runs, failing = simulate(37)
-	if failing < 37 || failing > 37+SearchGap || len(runs) > 8 {
-		t.Errorf("limit at 37: runs %v, smallest failing %d", runs, failing)
-	}
-	runs, failing = simulate(1)
-	if len(runs) != 1 || failing != 1 {
-		t.Errorf("limit at 1: runs %v, failing %d", runs, failing)
-	}
-}
-
 func TestValidate(t *testing.T) {
 	base := RunSpec{Target: TargetTM, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1}
 	if err := base.Validate(); err != nil {
