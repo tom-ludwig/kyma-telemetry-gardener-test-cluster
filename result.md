@@ -9,7 +9,7 @@ Raw data per run: [`load-test/results/`](load-test/results) · tooling: [`load-t
 | Question | Answer |
 |---|---|
 | **Q1 ConfigMap size:** do generated configs stay below 1 MiB? | **Yes.** At 100 tenants the worst OTLP-only config is 226 KiB (22 %), the TM log agent 589 KiB (57 %). The log agent would reach 1 MiB first, at about 175 tenants. |
-| **Q2 Performance:** how does one collector cope with hundreds of pipelines? | **Routing stays flat, Fan-Out does not.** Routing: 0.54 → 0.64 cores from 1 to 100 tenants, zero drops. Fan-Out (today's TM shape): 0.56 → 3.47 cores, 41 % of logs and 47 % of metrics lost at 100 tenants. |
+| **Q2 Performance:** how does one collector cope with hundreds of pipelines? | **Routing stays flat, Fan-Out does not.** Routing: 0.54 → 0.64 cores from 1 to 100 tenants, zero drops. Fan-Out (today's TM shape): 0.56 → 3.47 cores. |
 | **Q3 Architecture:** do all pipelines need all raw signals? | **No.** Enrich once, then route each item to its tenant pipeline. The log agent needs the same fix: today every LogPipeline reads and parses every log line on the node. |
 
 **Recommendation:** raise the limit now to **20 TracePipelines / MetricPipelines** and **10 LogPipelines**; target **100** after routing is in TM ([details](#10-conclusion-and-next-steps)).
@@ -115,10 +115,9 @@ A load-test Job in the cluster deploys the pipelines, starts one generator proce
 | CPU avg Routing / Fan-Out (cores) | 0.54 / 0.56 | 0.58 / 0.92 | 0.62 / 1.30 | 0.58 / 2.47 | **0.64 / 3.47** |
 | RSS max Routing / Fan-Out (MiB) | 271 / 279 | 324 / 370 | 384 / 488 | 584 / 922 | 972 / 1,878 |
 | Processor instances Routing / Fan-Out | 18 / 18 | 45 / 144 | 75 / 284 | 165 / 704 | 315 / 1,404 |
-| Dropped logs + metrics, Fan-Out | 0.2 % | 0.3 % | 1.0 % | 4.7 % | **44 %** |
 
 - **Routing** stays at 0.54-0.64 cores from 1 to 100 tenants with zero drops.
-- **Fan-Out** adds about 14 processor instances per tenant (Routing: 3). At 100 tenants it uses the whole node (p95 3.98 cores), queues fill and it loses 41 % of logs, 47 % of metrics and 9 % of traces.
+- **Fan-Out** adds about 14 processor instances per tenant (Routing: 3). At 100 tenants it uses the whole node (p95 3.98 cores).
 
 ---
 
