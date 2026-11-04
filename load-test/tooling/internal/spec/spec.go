@@ -18,6 +18,9 @@ const (
 
 	Healthy = "healthy"
 	Faulty  = "faulty"
+	// Outage: every pipeline of every tenant exports to an endpoint that does not exist, so all
+	// items stay in the exporter queues (tm gateway only).
+	Outage = "outage"
 
 	// TargetOTel tests a plain OTel collector we build ourselves; TargetTM tests the managed
 	// Telemetry Manager gateway via LogPipeline/MetricPipeline/TracePipeline CRs we deploy.
@@ -189,8 +192,10 @@ func (s RunSpec) Validate() error {
 		return fmt.Errorf("-target tm supports only -shape F1 (Telemetry Manager has no routing), got %q", s.Shape)
 	case s.Load != LoadA && s.Load != LoadB:
 		return fmt.Errorf("-load must be A or B, got %q", s.Load)
-	case s.Health != Healthy && s.Health != Faulty:
-		return fmt.Errorf("-health must be healthy or faulty, got %q", s.Health)
+	case s.Health != Healthy && s.Health != Faulty && s.Health != Outage:
+		return fmt.Errorf("-health must be healthy, faulty or outage, got %q", s.Health)
+	case s.Health == Outage && s.Target != TargetTM:
+		return fmt.Errorf("-health outage needs -target tm, got %q", s.Target)
 	case s.Tenants < 1 || s.Tenants > 999:
 		return fmt.Errorf("-tenants must be 1..999, got %d", s.Tenants)
 	case s.Rep < 1:

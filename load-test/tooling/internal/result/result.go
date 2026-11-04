@@ -144,6 +144,10 @@ type SignalResult struct {
 	EnqueueFailed       float64    `json:"enqueue_failed"`
 	SendFailed          float64    `json:"send_failed"`
 	QueueUtilMax        float64    `json:"queue_util_max"`
+
+	// Outage runs only: largest queue size of each pipeline's exporter, in the exporter's
+	// sizer unit (bytes for the gateway's persistent log queues).
+	QueueSizeMaxByPipeline map[string]float64 `json:"queue_size_max_by_pipeline,omitempty"`
 }
 
 type CollectorResult struct {
@@ -193,6 +197,20 @@ func (p Prom) Value(ctx context.Context, q string, at time.Time) (v float64, ok 
 		return 0, false, nil
 	}
 	return float64(vec[0].Value), true, nil
+}
+
+// ByLabel returns every sample of an instant query, keyed by the value of label.
+func (p Prom) ByLabel(ctx context.Context, q, label string, at time.Time) (map[string]float64, error) {
+	res, _, _, err := p.API.Query(ctx, q, at)
+	if err != nil {
+		return nil, fmt.Errorf("query %s: %w", q, err)
+	}
+	vec, _ := res.(model.Vector)
+	m := map[string]float64{}
+	for _, sample := range vec {
+		m[string(sample.Metric[model.LabelName(label)])] = float64(sample.Value)
+	}
+	return m, nil
 }
 
 // required fails the run when the query has no data; the record never gets invented zeros.
@@ -292,7 +310,11 @@ func (p Prom) QuerySignal(ctx context.Context, s spec.RunSpec, u spec.Unit, w Wi
 	if r.ReceivedPerS, err = p.Required(ctx, receivedQuery(u, sel, W), at); err != nil {
 		return r, err
 	}
-	if r.ExportedPerS, err = p.Required(ctx, fmt.Sprintf(`sum(rate(otelcol_exporter_sent_%s_total{%s}[%s]))`, t, sel.Exp, W), at); err != nil {
+	exported := p.Required
+	if s.Health == spec.Outage {
+		exported = p.Counter // no send succeeds in an outage, so the series may never appear
+	}
+	if r.ExportedPerS, err = exported(ctx, fmt.Sprintf(`sum(rate(otelcol_exporter_sent_%s_total{%s}[%s]))`, t, sel.Exp, W), at); err != nil {
 		return r, err
 	}
 	if s.Target == spec.TargetOTel {
@@ -317,6 +339,13 @@ func (p Prom) QuerySignal(ctx context.Context, s spec.RunSpec, u spec.Unit, w Wi
 		return r, err
 	}
 	r.ExportedHealthyPerS = r.ExportedPerS
+	if s.Health == spec.Outage {
+		// the gateway's selector spans all signals; its exporters end in the pipeline name <signal>-p-NNN
+		q := fmt.Sprintf(`max by (exporter) (max_over_time(otelcol_exporter_queue_size{%s,exporter=~".+/.*%s-p-[0-9]+"}[%s]))`, sel.Exp, u.Signal.Name, W)
+		if r.QueueSizeMaxByPipeline, err = p.ByLabel(ctx, q, "exporter", at); err != nil {
+			return r, err
+		}
+	}
 	if s.Target == spec.TargetTM {
 		return r, nil // the gateway names its own exporters; no faulty split applies
 	}

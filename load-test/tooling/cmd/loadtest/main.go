@@ -31,7 +31,7 @@ func main() {
 	flag.StringVar(&s.Shape, "shape", spec.ShapeF1, "F1 (fan-out) or R1 (routing); tm supports F1 only")
 	flag.IntVar(&s.Tenants, "tenants", 1, "tenants; each has one traces, metrics and logs pipeline")
 	flag.StringVar(&s.Load, "load", spec.LoadA, "A (fixed total split across tenants) or B (-rate per tenant)")
-	flag.StringVar(&s.Health, "health", spec.Healthy, "healthy or faulty (p-000 of each signal goes to the fault backend)")
+	flag.StringVar(&s.Health, "health", spec.Healthy, "healthy, faulty (p-000 of each signal goes to the fault backend) or outage (tm only: every pipeline exports to a missing endpoint)")
 	flag.IntVar(&s.Rep, "rep", 1, "repetition number, part of the run ID")
 	flag.IntVar(&s.Rate, "rate", 1000, "load B: items/s per signal per tenant")
 	vmURL := flag.String("vm-url", "http://vmsingle-vm-single.monitoring.svc:8428", "self-monitoring vm-single")

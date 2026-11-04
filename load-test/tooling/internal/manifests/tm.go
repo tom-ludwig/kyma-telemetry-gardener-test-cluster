@@ -41,15 +41,19 @@ var tmKind = map[string]string{
 const (
 	faultBackendName = "fault-backend"
 	faultBackendPort = 4318
+	// outageBackendName has no Service, so every export fails and stays queued.
+	outageBackendName = "outage-backend"
 )
 
 // TMPipelineObjects returns the Telemetry Manager pipeline CRs for a run: one pipeline per
 // signal and tenant, each keeping only its tenant (same F1 filter as the otel path) and
 // exporting to the per-run nop debug backend. In faulty runs tenant 0 exports to the fault
-// backend instead. The managed gateway and module are not touched.
+// backend instead; in outage runs every pipeline exports to an endpoint that does not exist.
+// The managed gateway and module are not touched.
 func TMPipelineObjects(s spec.RunSpec) ([]client.Object, error) {
 	debugEndpoint := fmt.Sprintf("http://%s.%s.svc:%d", debugBackend, spec.TMBackendNamespace, debugBackendPort)
 	faultEndpoint := fmt.Sprintf("http://%s.%s.svc:%d", faultBackendName, spec.TMBackendNamespace, faultBackendPort)
+	outageEndpoint := fmt.Sprintf("http://%s.%s.svc:%d", outageBackendName, spec.TMBackendNamespace, debugBackendPort)
 	var objs []client.Object
 	for _, sig := range spec.Signals {
 		sources := sourcesOf(s, sig)
@@ -64,6 +68,9 @@ func TMPipelineObjects(s spec.RunSpec) ([]client.Object, error) {
 			endpoint := debugEndpoint
 			if s.Health == spec.Faulty && i == 0 {
 				endpoint = faultEndpoint
+			}
+			if s.Health == spec.Outage {
+				endpoint = outageEndpoint
 			}
 			objs = append(objs, tmPipeline(s, sig, kind, i, endpoint, sources))
 		}

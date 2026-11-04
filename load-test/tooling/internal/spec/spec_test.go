@@ -68,6 +68,10 @@ func TestValidate(t *testing.T) {
 	if err := faulty.Validate(); err != nil {
 		t.Errorf("valid tm faulty run rejected: %v", err)
 	}
+	outage := RunSpec{Target: TargetTM, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Outage, Rep: 1}
+	if err := outage.Validate(); err != nil {
+		t.Errorf("valid tm outage run rejected: %v", err)
+	}
 	agent := RunSpec{Target: TargetTM, Component: ComponentAll, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1}
 	if err := agent.Validate(); err != nil {
 		t.Errorf("valid tm all run rejected: %v", err)
@@ -78,6 +82,8 @@ func TestValidate(t *testing.T) {
 		"bad component":       {Target: TargetTM, Component: "x", Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
 		"otel+log-agent":      {Target: TargetOTel, Component: ComponentLogAgent, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Healthy, Rep: 1},
 		"metric-agent+faulty": {Target: TargetTM, Component: ComponentMetricAgent, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Faulty, Rep: 1},
+		"otel+outage":         {Target: TargetOTel, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Outage, Rep: 1},
+		"log-agent+outage":    {Target: TargetTM, Component: ComponentLogAgent, Shape: ShapeF1, Tenants: 5, Load: LoadA, Health: Outage, Rep: 1},
 	}
 	for name, s := range reject {
 		if err := s.Validate(); err == nil {

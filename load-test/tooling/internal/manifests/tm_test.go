@@ -51,6 +51,22 @@ func TestTMPipelineObjects(t *testing.T) {
 	}
 }
 
+func TestTMOutagePipelines(t *testing.T) {
+	s := spec.RunSpec{Target: spec.TargetTM, Shape: spec.ShapeF1, Tenants: 2, Load: spec.LoadA, Health: spec.Outage, Rep: 1}
+	objs, err := TMPipelineObjects(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("http://%s.%s.svc:%d", outageBackendName, spec.TMBackendNamespace, debugBackendPort)
+	for _, o := range objs {
+		u := o.(*unstructured.Unstructured)
+		endpoint, _, _ := unstructured.NestedString(u.Object, "spec", "output", "otlp", "endpoint", "value")
+		if endpoint != want {
+			t.Errorf("%s endpoint %q, want %q", u.GetName(), endpoint, want)
+		}
+	}
+}
+
 func TestTMLogAgentPipeline(t *testing.T) {
 	s := spec.RunSpec{Target: spec.TargetTM, Component: spec.ComponentLogAgent, Shape: spec.ShapeF1, Tenants: 2, Load: spec.LoadA, Health: spec.Healthy, Rep: 1}
 	objs, err := TMPipelineObjects(s)
