@@ -18,8 +18,9 @@ spec:
     manager:
       container:
         image:
-          # 1.74.1 with higher agent and gateway base memory and the log agent memory_limiter at 75/15
-          repository: ghcr.io/tom-ludwig/telemetry-manager/telemetry-manager:latest
+          # 1.74.1 with higher agent and gateway base memory, the log agent memory_limiter at 75/15,
+          # and a 5Gi file_storage queue per gateway log exporter on a hostPath volume
+          repository: ghcr.io/louis-kauer/telemetry-manager:1.74.1-persistence-hostpath
           pullPolicy: "Always"
     fullnameOverride: telemetry
     default:
